@@ -2,7 +2,8 @@ name: Extract root ZIP archives
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths:
       - '*.zip'
       - '*.ZIP'
@@ -17,9 +18,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  extract-build-and-commit:
+  extract-build-test-and-commit:
     name: Extract, validate dashboard, and commit
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -32,6 +34,7 @@ jobs:
           set -euo pipefail
           python3 <<'PY'
           import base64
+          import hashlib
           from pathlib import Path
 
           root = Path.cwd()
@@ -43,8 +46,10 @@ jobs:
           for prefix, parts in sorted(groups.items()):
               encoded = b''.join(part.read_bytes() for part in parts)
               archive = root / prefix.removesuffix('.b64')
-              archive.write_bytes(base64.b64decode(encoded, validate=True))
-              print(f'Reconstructed {archive.name} from {len(parts)} part(s).')
+              payload = base64.b64decode(encoded, validate=True)
+              archive.write_bytes(payload)
+              digest = hashlib.sha256(payload).hexdigest()
+              print(f'Reconstructed {archive.name} from {len(parts)} part(s); sha256={digest}.')
               for part in parts:
                   part.unlink()
           PY
@@ -63,9 +68,10 @@ jobs:
 
           root = Path.cwd().resolve()
           archives = sorted(
-              p for p in root.iterdir()
-              if p.is_file() and p.suffix.lower() == '.zip'
+              path for path in root.iterdir()
+              if path.is_file() and path.suffix.lower() == '.zip'
           )
+
           if not archives:
               print('No ZIP archives found in the repository root.')
               with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
@@ -73,20 +79,23 @@ jobs:
               raise SystemExit(0)
 
           processed = []
-          with tempfile.TemporaryDirectory(prefix='zip-staging-') as staging_dir:
+          with tempfile.TemporaryDirectory(prefix='root-zip-staging-') as staging_dir:
               staging = Path(staging_dir)
-              staged = []
+              staged_archives = []
               for index, archive in enumerate(archives):
-                  copy = staging / f'{index:04d}-{archive.name}'
-                  shutil.copy2(archive, copy)
-                  staged.append((archive, copy))
+                  staged = staging / f'{index:04d}-{archive.name}'
+                  shutil.copy2(archive, staged)
+                  staged_archives.append((archive, staged))
 
-              for archive, copy in staged:
+              for archive, staged in staged_archives:
                   print(f'Extracting {archive.name}')
-                  with zipfile.ZipFile(copy) as zip_file:
-                      corrupt = zip_file.testzip()
-                      if corrupt is not None:
-                          raise RuntimeError(f"Corrupt member '{corrupt}' in '{archive.name}'.")
+                  with zipfile.ZipFile(staged) as zip_file:
+                      corrupt_member = zip_file.testzip()
+                      if corrupt_member is not None:
+                          raise RuntimeError(
+                              f"Corrupt member '{corrupt_member}' in '{archive.name}'."
+                          )
+
                       for member in zip_file.infolist():
                           member_path = PurePosixPath(member.filename.replace('\\', '/'))
                           parts = member_path.parts
@@ -98,20 +107,33 @@ jobs:
                               or parts[0].endswith(':')
                               or any(part.lower() == '.git' for part in parts)
                           ):
-                              raise RuntimeError(f"Unsafe path '{member.filename}'.")
+                              raise RuntimeError(
+                                  f"Unsafe path '{member.filename}' in '{archive.name}'."
+                              )
 
-                      with tempfile.TemporaryDirectory(prefix='zip-extract-') as extract_dir:
-                          extracted = Path(extract_dir)
-                          zip_file.extractall(extracted)
-                          for source in extracted.iterdir():
+                      with tempfile.TemporaryDirectory(
+                          prefix='root-zip-extract-'
+                      ) as extraction_dir:
+                          extraction_root = Path(extraction_dir)
+                          zip_file.extractall(extraction_root)
+                          for source in extraction_root.iterdir():
                               destination = root / source.name
                               if source.is_dir():
                                   if destination.exists() and not destination.is_dir():
-                                      raise RuntimeError(f"Cannot replace file '{destination}' with directory.")
-                                  shutil.copytree(source, destination, dirs_exist_ok=True)
+                                      raise RuntimeError(
+                                          f"Cannot replace file '{destination}' with a directory."
+                                      )
+                                  shutil.copytree(
+                                      source,
+                                      destination,
+                                      dirs_exist_ok=True,
+                                      copy_function=shutil.copy2,
+                                  )
                               else:
                                   if destination.exists() and destination.is_dir():
-                                      raise RuntimeError(f"Cannot replace directory '{destination}' with file.")
+                                      raise RuntimeError(
+                                          f"Cannot replace directory '{destination}' with a file."
+                                      )
                                   shutil.copy2(source, destination)
                   processed.append(archive.name)
 
@@ -139,19 +161,21 @@ jobs:
           if [[ -f "${GITHUB_WORKSPACE}/docs/dashboard/package.json" ]]; then
             dashboard_dir="${GITHUB_WORKSPACE}/docs/dashboard"
           else
-            dashboard_dir="$(find "${GITHUB_WORKSPACE}" -mindepth 3 -maxdepth 4 -type f -path '*/docs/dashboard/package.json' -printf '%h\n' | sort | head -n 1)"
+            dashboard_dir="$(find "${GITHUB_WORKSPACE}" -mindepth 3 -maxdepth 5 -type f -path '*/docs/dashboard/package.json' -printf '%h\n' | sort | head -n 1)"
           fi
+
           if [[ -z "${dashboard_dir}" ]]; then
             echo 'Dashboard package.json was not found.' >&2
             exit 1
           fi
+
           relative_dir="${dashboard_dir#${GITHUB_WORKSPACE}/}"
           echo "dashboard_dir=${dashboard_dir}" >> "${GITHUB_OUTPUT}"
           echo "relative_dir=${relative_dir}" >> "${GITHUB_OUTPUT}"
           echo "Dashboard located at ${relative_dir}."
 
-      - name: Install dependencies, typecheck, and build dashboard
-        id: dashboard_build
+      - name: Install, typecheck, build, capture, and audit
+        id: dashboard_validation
         if: steps.extract.outputs.processed_count != '0'
         shell: bash
         env:
@@ -162,8 +186,27 @@ jobs:
           timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
           relative_log_file="${DASHBOARD_RELATIVE_DIR}/logs/${timestamp}.log"
           log_file="${GITHUB_WORKSPACE}/${relative_log_file}"
+          server_log="${GITHUB_WORKSPACE}/${DASHBOARD_RELATIVE_DIR}/logs/${timestamp}-server.log"
           exit_code=0
+          server_pid=''
           mkdir -p "$(dirname "${log_file}")"
+
+          record_code() {
+            local label="$1"
+            local code="$2"
+            echo "${label} exit code: ${code}" | tee -a "${log_file}"
+            if [[ ${code} -ne 0 && ${exit_code} -eq 0 ]]; then
+              exit_code=${code}
+            fi
+          }
+
+          cleanup_server() {
+            if [[ -n "${server_pid}" ]]; then
+              kill "${server_pid}" 2>/dev/null || true
+              wait "${server_pid}" 2>/dev/null || true
+            fi
+          }
+          trap cleanup_server EXIT
 
           {
             echo 'Dashboard validation log'
@@ -180,58 +223,118 @@ jobs:
 
           echo '===== npm install --verbose =====' | tee -a "${log_file}"
           npm install --verbose 2>&1 | tee -a "${log_file}"
-          install_code=${PIPESTATUS[0]}
-          echo "npm install exit code: ${install_code}" | tee -a "${log_file}"
-          if [[ ${install_code} -ne 0 ]]; then exit_code=${install_code}; fi
+          record_code 'npm install' "${PIPESTATUS[0]}"
+
+          echo | tee -a "${log_file}"
+          echo '===== npm run validate:content =====' | tee -a "${log_file}"
+          npm run validate:content 2>&1 | tee -a "${log_file}"
+          record_code 'npm run validate:content' "${PIPESTATUS[0]}"
 
           echo | tee -a "${log_file}"
           echo '===== npm run typecheck =====' | tee -a "${log_file}"
           npm run typecheck 2>&1 | tee -a "${log_file}"
-          typecheck_code=${PIPESTATUS[0]}
-          echo "npm run typecheck exit code: ${typecheck_code}" | tee -a "${log_file}"
-          if [[ ${typecheck_code} -ne 0 && ${exit_code} -eq 0 ]]; then exit_code=${typecheck_code}; fi
+          record_code 'npm run typecheck' "${PIPESTATUS[0]}"
 
           echo | tee -a "${log_file}"
           echo '===== npm run build =====' | tee -a "${log_file}"
           npm run build 2>&1 | tee -a "${log_file}"
-          build_code=${PIPESTATUS[0]}
-          echo "npm run build exit code: ${build_code}" | tee -a "${log_file}"
-          if [[ ${build_code} -ne 0 && ${exit_code} -eq 0 ]]; then exit_code=${build_code}; fi
+          record_code 'npm run build' "${PIPESTATUS[0]}"
 
+          echo | tee -a "${log_file}"
+          echo '===== npx playwright install --with-deps chromium =====' | tee -a "${log_file}"
+          npx playwright install --with-deps chromium 2>&1 | tee -a "${log_file}"
+          record_code 'playwright browser install' "${PIPESTATUS[0]}"
+
+          if [[ ${exit_code} -eq 0 ]]; then
+            echo | tee -a "${log_file}"
+            echo '===== npm run dev =====' | tee -a "${log_file}"
+            npm run dev -- --host 127.0.0.1 --port 5173 --strictPort > "${server_log}" 2>&1 &
+            server_pid=$!
+
+            available=0
+            for attempt in $(seq 1 60); do
+              if curl --fail --silent --show-error 'http://127.0.0.1:5173/' >/dev/null; then
+                available=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [[ ${available} -ne 1 ]]; then
+              echo 'Development server did not become available.' | tee -a "${log_file}"
+              cat "${server_log}" | tee -a "${log_file}"
+              exit_code=1
+            else
+              echo 'Development server available at http://127.0.0.1:5173/.' | tee -a "${log_file}"
+
+              echo | tee -a "${log_file}"
+              echo '===== npm run capture =====' | tee -a "${log_file}"
+              npm run capture -- --base-url 'http://127.0.0.1:5173' 2>&1 | tee -a "${log_file}"
+              record_code 'npm run capture' "${PIPESTATUS[0]}"
+
+              echo | tee -a "${log_file}"
+              echo '===== npm run audit:a11y =====' | tee -a "${log_file}"
+              npm run audit:a11y -- --base-url 'http://127.0.0.1:5173' 2>&1 | tee -a "${log_file}"
+              record_code 'npm run audit:a11y' "${PIPESTATUS[0]}"
+            fi
+          else
+            echo 'Browser validation skipped because a previous validation failed.' | tee -a "${log_file}"
+          fi
+
+          cleanup_server
+          server_pid=''
           rm -rf "${DASHBOARD_DIR}/node_modules"
+
           {
             echo "exit_code=${exit_code}"
             echo "log_file=${relative_log_file}"
+            echo "server_log=${DASHBOARD_RELATIVE_DIR}/logs/${timestamp}-server.log"
           } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo
+            echo '## Dashboard validation'
+            echo
+            echo "- Dashboard: \`${DASHBOARD_RELATIVE_DIR}\`"
+            echo "- Log: \`${relative_log_file}\`"
+            echo "- Exit code: \`${exit_code}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
           exit 0
 
-      - name: Commit and push extracted files and validation log
+      - name: Commit and push extracted files and validation logs
         if: always() && steps.extract.outputs.processed_count != '0'
         shell: bash
         env:
-          BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
+          BUILD_LOG_FILE: ${{ steps.dashboard_validation.outputs.log_file }}
+          SERVER_LOG_FILE: ${{ steps.dashboard_validation.outputs.server_log }}
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          if [[ -n "${BUILD_LOG_FILE}" && -f "${BUILD_LOG_FILE}" ]]; then
-            git add -f -- "${BUILD_LOG_FILE}"
-          fi
+
+          for log_file in "${BUILD_LOG_FILE}" "${SERVER_LOG_FILE}"; do
+            if [[ -n "${log_file}" && -f "${log_file}" ]]; then
+              git add -f -- "${log_file}"
+            fi
+          done
+
           if git diff --cached --quiet; then
             echo 'No repository changes to commit.'
             exit 0
           fi
+
           git commit -m 'chore: extract system package and validate dashboard [skip ci]'
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Fail workflow when dashboard validation fails
-        if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_build.outputs.exit_code != '' && steps.dashboard_build.outputs.exit_code != '0'
+        if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_validation.outputs.exit_code != '' && steps.dashboard_validation.outputs.exit_code != '0'
         shell: bash
         env:
-          BUILD_EXIT_CODE: ${{ steps.dashboard_build.outputs.exit_code }}
-          BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
+          VALIDATION_EXIT_CODE: ${{ steps.dashboard_validation.outputs.exit_code }}
+          VALIDATION_LOG_FILE: ${{ steps.dashboard_validation.outputs.log_file }}
         run: |
-          echo "::error::Dashboard validation failed with exit code ${BUILD_EXIT_CODE}. See ${BUILD_LOG_FILE}."
-          exit "${BUILD_EXIT_CODE}"
+          echo "::error::Dashboard validation failed with exit code ${VALIDATION_EXIT_CODE}. See ${VALIDATION_LOG_FILE}."
+          exit "${VALIDATION_EXIT_CODE}"
