@@ -1,0 +1,158 @@
+name: Extract root ZIP archives
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '*.zip'
+      - '*.ZIP'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extract-root-zips-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  extract-and-commit:
+    name: Extract, remove archives, and commit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract ZIP archives from repository root
+        id: extract
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import os
+          import shutil
+          import tempfile
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          root = Path.cwd().resolve()
+          archives = sorted(
+              path
+              for path in root.iterdir()
+              if path.is_file() and path.suffix.lower() == ".zip"
+          )
+
+          if not archives:
+              print("No ZIP archives found in the repository root.")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                  output.write("processed_count=0\n")
+              raise SystemExit(0)
+
+          processed = []
+
+          with tempfile.TemporaryDirectory(prefix="root-zip-staging-") as staging_dir:
+              staging = Path(staging_dir)
+              staged_archives = []
+
+              # Preserve the original archives before extraction so that an
+              # extracted file cannot alter another archive waiting to run.
+              for index, archive in enumerate(archives):
+                  staged = staging / f"{index:04d}-{archive.name}"
+                  shutil.copy2(archive, staged)
+                  staged_archives.append((archive, staged))
+
+              for archive, staged in staged_archives:
+                  print(f"Extracting {archive.name}")
+
+                  with zipfile.ZipFile(staged) as zip_file:
+                      corrupt_member = zip_file.testzip()
+                      if corrupt_member is not None:
+                          raise RuntimeError(
+                              f"Corrupt member '{corrupt_member}' in '{archive.name}'."
+                          )
+
+                      for member in zip_file.infolist():
+                          normalized_name = member.filename.replace("\\", "/")
+                          member_path = PurePosixPath(normalized_name)
+                          parts = member_path.parts
+
+                          if not parts:
+                              continue
+
+                          if (
+                              member_path.is_absolute()
+                              or ".." in parts
+                              or parts[0].endswith(":")
+                              or any(part.lower() == ".git" for part in parts)
+                          ):
+                              raise RuntimeError(
+                                  f"Unsafe path '{member.filename}' in '{archive.name}'."
+                              )
+
+                      with tempfile.TemporaryDirectory(
+                          prefix="root-zip-extract-"
+                      ) as extraction_dir:
+                          extraction_root = Path(extraction_dir)
+                          zip_file.extractall(extraction_root)
+
+                          for source in extraction_root.iterdir():
+                              destination = root / source.name
+
+                              if source.is_dir():
+                                  if destination.exists() and not destination.is_dir():
+                                      raise RuntimeError(
+                                          f"Cannot replace file '{destination}' with a directory."
+                                      )
+                                  shutil.copytree(
+                                      source,
+                                      destination,
+                                      dirs_exist_ok=True,
+                                      copy_function=shutil.copy2,
+                                  )
+                              else:
+                                  if destination.exists() and destination.is_dir():
+                                      raise RuntimeError(
+                                          f"Cannot replace directory '{destination}' with a file."
+                                      )
+                                  shutil.copy2(source, destination)
+
+                  processed.append(archive.name)
+
+          # Remove every source archive only after all archives were validated
+          # and extracted successfully.
+          for archive in archives:
+              archive.unlink(missing_ok=True)
+
+          print(f"Processed {len(processed)} archive(s): {', '.join(processed)}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"processed_count={len(processed)}\n")
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as summary:
+                  summary.write("## Extracted root ZIP archives\n\n")
+                  for name in processed:
+                      summary.write(f"- `{name}`\n")
+          PY
+
+      - name: Commit and push extracted files
+        if: steps.extract.outputs.processed_count != '0'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No repository changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: extract root ZIP archives [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
