@@ -1,0 +1,51 @@
+Tenancy/IAM; catálogo e billing; IA; projetos/workflow/documentos; especialistas; integrações; segurança/LGPD/auditoria.
+
+## Diagrama Mermaid
+
+```mermaid
+erDiagram
+{er}
+{rels}
+```
+
+## Dicionário e decisões
+
+{chr(10).join(f'- **{e}**: entidade lógica do domínio, com `id` como PK, `tenant_id` quando aplicável, estado, timestamps e remoção lógica.' for e in entities)}
+
+`TENANT_USER_PROFILE`, `PLAN_FEATURE`, `SPECIALIST_SKILL`, `AI_EXECUTION_PROMPT` e `TIMELINE_TEMPLATE_STEP` resolvem N:N. Versões preservam reproduzibilidade. `AUDIT_CONFIGURATION` está grafado de forma consistente. FKs globais podem ter `tenant_id` nulo; validação de escopo ocorre em todas as operações.
+
+## Pontos de atenção
+
+Tipos físicos, índices definitivos, particionamento, residência de dados e retenções dependem da arquitetura. Dados financeiros/PII exigem criptografia, minimização e controles de acesso. Não há SQL, migrations, APIs ou UI nesta etapa.
+''')
+
+(THEME/'tokens.angular.json').write_text(json.dumps({'meta':meta,'primitive':{'primary':'#005B96','secondary':'#006C67','tertiary':'#8B4A00','surface':'#F7F9FC','surfaceDark':'#0C1117','radius':[8,12,16,24],'space':[4,8,12,16,24,32]},'semantic':{'light':{'background':'#F7F9FC','surface':'#FFFFFF','text':'#18202A'},'dark':{'background':'#0C1117','surface':'#151C24','text':'#E3E8EF'}}},ensure_ascii=False,indent=2),encoding='utf-8')
+(THEME/'web.css').write_text(':root{--sf-primary:#005b96;--sf-secondary:#006c67;--sf-tertiary:#8b4a00;--sf-bg:#f7f9fc;--sf-surface:#fff;--sf-text:#18202a;font-family:Inter,"Segoe UI",sans-serif}[data-theme="dark"]{--sf-primary:#62b5f5;--sf-secondary:#5fd6ce;--sf-tertiary:#ffb86a;--sf-bg:#0c1117;--sf-surface:#151c24;--sf-text:#e3e8ef}:focus-visible{outline:2px solid var(--sf-primary);outline-offset:2px}@media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}',encoding='utf-8')
+(THEME/'theme.tsx').write_text("import{createTheme}from'@mui/material/styles';export const createForgeTheme=(mode:'light'|'dark')=>createTheme({palette:{mode,primary:{main:mode==='dark'?'#62B5F5':'#005B96'},secondary:{main:mode==='dark'?'#5FD6CE':'#006C67'},background:{default:mode==='dark'?'#0C1117':'#F7F9FC',paper:mode==='dark'?'#151C24':'#FFFFFF'}},shape:{borderRadius:12}});export default createForgeTheme('light');",encoding='utf-8')
+(VI/'brand-guidelines.md').write_text('# Brand guidelines\n\nSímbolo hexagonal, trilha ascendente e núcleo âmbar. Área de proteção igual ao núcleo; mínimo 16 px para símbolo e 120 px para assinatura. Não distorcer, rotacionar, recolorir fora da paleta ou aplicar efeitos. Contraste AA e alt text contextual.\n',encoding='utf-8')
+
+def svg(dark=False,word=True):
+ bg='#0C1117' if dark else 'none'; p='#62B5F5' if dark else '#005B96'; a='#FFB86A' if dark else '#8B4A00'; t='#E3E8EF' if dark else '#18202A'; w=720 if word else 256; h=180 if word else 256; cx=90 if word else 128; cy=90 if word else 128; r=58 if word else 82
+ pts=[]
+ for i in range(6):
+  ang=math.radians(30+60*i); pts.append(f'{cx+r*math.cos(ang):.1f},{cy+r*math.sin(ang):.1f}')
+ txt=f'<text x="180" y="95" fill="{t}" font-family="Arial" font-size="48" font-weight="700">System Forge</text>' if word else ''
+ return f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img"><title>System Forge</title><desc>Hexágono com trilha ascendente</desc>{f"<rect width=\"100%\" height=\"100%\" fill=\"{bg}\"/>" if dark else ""}<polygon points="{" ".join(pts)}" fill="none" stroke="{p}" stroke-width="12"/><path d="M {cx-34} {cy+30} L {cx-5} {cy+2} L {cx+18} {cy+18} L {cx+42} {cy-32}" fill="none" stroke="{a}" stroke-width="12"/><circle cx="{cx+42}" cy="{cy-32}" r="12" fill="{a}"/>{txt}</svg>'
+for n,d,w in [('logo-horizontal.svg',0,1),('logo-horizontal-dark.svg',1,1),('logo-mark.svg',0,0),('logo-mark-dark.svg',1,0),('favicon.svg',0,0)]: (VI/n).write_text(svg(bool(d),bool(w)),encoding='utf-8')
+
+def icon(size,dark=False):
+ im=Image.new('RGBA',(size,size),(12,17,23,255) if dark else (247,249,252,255)); dr=ImageDraw.Draw(im); c=size/2;r=size*.31; pts=[]
+ for i in range(6):
+  ang=math.radians(30+60*i);pts.append((c+r*math.cos(ang),c+r*math.sin(ang)))
+ dr.line(pts+[pts[0]],fill=(98,181,245,255) if dark else (0,91,150,255),width=max(2,int(size*.05)),joint='curve'); dr.line([(c-r*.5,c+r*.3),(c,c),(c+r*.2,c+r*.2),(c+r*.5,c-r*.4)],fill=(255,184,106,255),width=max(2,int(size*.05))); return im
+for s in [16,32,48,64,72,96,128,144,152,180,192,256,384,512,1024]: icon(s).save(VI/f'icon-{s}.png')
+icon(256).save(VI/'favicon.ico',format='ICO',sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
+for name,size,dark in [('og-image.png',(1200,630),1),('twitter-card.png',(1200,600),1),('linkedin-card.png',(1200,627),0),('splash-light.png',(1080,1920),0),('splash-dark.png',(1080,1920),1)]:
+ im=Image.new('RGB',size,(12,17,23) if dark else (247,249,252)); mark=icon(min(size)//3,bool(dark)).convert('RGB'); im.paste(mark,((size[0]-mark.width)//2,int(size[1]*.2))); im.save(VI/name)
+
+assert sid=='64BD1EFD',sid
+for p in [DOCS/'00.json',THEME/'tokens.angular.json']: json.loads(p.read_text())
+for p in VI.glob('*.svg'): ET.fromstring(p.read_text())
+for p in VI.glob('*.png'): Image.open(p).verify()
+assert idea in (DOCS/'00.md').read_text()
+print(json.dumps({'system_id':sid,'docs':9,'assets':len(list(VI.iterdir()))},ensure_ascii=False))
