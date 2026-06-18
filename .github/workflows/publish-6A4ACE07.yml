@@ -1,0 +1,182 @@
+name: Publish 6A4ACE07 clean project
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: publish-6A4ACE07
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == '[publish] 6A4ACE07'
+    runs-on: ubuntu-latest
+    name: Validate, build, package, and publish
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download and verify source package
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          logs="${RUNNER_TEMP}/6A4ACE07-logs"
+          mkdir -p "${logs}"
+
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}/git/blobs/0851fbb486fa4b580bbd36ba41725636b35d4992"
+          curl --fail --silent --show-error --location \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${api}" > "${RUNNER_TEMP}/source-blob.json"
+
+          jq -r '.content' "${RUNNER_TEMP}/source-blob.json" | tr -d '\n' | base64 --decode > "${RUNNER_TEMP}/6A4ACE07.zip"
+          echo "b46fb6f47b113e5446ce85bd9ff86a872332ea9c193afacbf84a9c7b8e021e52  ${RUNNER_TEMP}/6A4ACE07.zip" \
+            | sha256sum -c - | tee "${logs}/source-sha256-check.log"
+          unzip -t "${RUNNER_TEMP}/6A4ACE07.zip" | tee "${logs}/source-zip-test.log"
+
+          rm -rf "${GITHUB_WORKSPACE}/6A4ACE07"
+          unzip -q "${RUNNER_TEMP}/6A4ACE07.zip" -d "${GITHUB_WORKSPACE}"
+
+          test -f "${GITHUB_WORKSPACE}/6A4ACE07/.gitignore"
+          test -f "${GITHUB_WORKSPACE}/6A4ACE07/ideia-inicial.md"
+          test -f "${GITHUB_WORKSPACE}/6A4ACE07/docs/dashboard/package-lock.json"
+
+          find "${GITHUB_WORKSPACE}/6A4ACE07" -type f | sort > "${logs}/source-file-list.txt"
+          count="$(wc -l < "${logs}/source-file-list.txt" | tr -d ' ')"
+          echo "file_count=${count}" >> "${GITHUB_OUTPUT}"
+          echo "Validated ${count} source files."
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: 6A4ACE07/docs/dashboard/package-lock.json
+
+      - name: Install dependencies and build dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          logs="${RUNNER_TEMP}/6A4ACE07-logs"
+          cd "${GITHUB_WORKSPACE}/6A4ACE07/docs/dashboard"
+          {
+            echo "Node: $(node --version)"
+            echo "npm: $(npm --version)"
+            echo "Commit: ${GITHUB_SHA}"
+          } | tee "${logs}/environment.log"
+          npm ci --ignore-scripts 2>&1 | tee "${logs}/npm-ci.log"
+          npm run build 2>&1 | tee "${logs}/npm-build.log"
+
+      - name: Remove generated files and prepare final ZIP
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          logs="${RUNNER_TEMP}/6A4ACE07-logs"
+          dashboard="${GITHUB_WORKSPACE}/6A4ACE07/docs/dashboard"
+
+          rm -rf \
+            "${dashboard}/node_modules" \
+            "${dashboard}/dist" \
+            "${dashboard}/build" \
+            "${dashboard}/coverage" \
+            "${dashboard}/.vite" \
+            "${dashboard}/logs" \
+            "${dashboard}/screenshots" \
+            "${dashboard}/playwright-report" \
+            "${dashboard}/test-results"
+
+          find "${GITHUB_WORKSPACE}/6A4ACE07/docs" -type f \
+            \( -name '*.log' -o -name '*.tsbuildinfo' -o -name 'vite.config.js' -o -name 'vite.config.d.ts' \) \
+            -delete
+
+          bad="$(find "${GITHUB_WORKSPACE}/6A4ACE07/docs" \
+            \( -type d \( -name node_modules -o -name dist -o -name build -o -name coverage -o -name .vite -o -name logs -o -name screenshots -o -name playwright-report -o -name test-results \) \
+            -o -type f \( -name '*.log' -o -name '*.tsbuildinfo' -o -name 'vite.config.js' -o -name 'vite.config.d.ts' \) \) \
+            -print)"
+          if [[ -n "${bad}" ]]; then
+            echo "Unexpected generated files remain:" | tee "${logs}/cleanliness-error.log"
+            echo "${bad}" | tee -a "${logs}/cleanliness-error.log"
+            exit 1
+          fi
+
+          cp "${RUNNER_TEMP}/6A4ACE07.zip" "${GITHUB_WORKSPACE}/6A4ACE07/6A4ACE07.zip"
+          unzip -t "${GITHUB_WORKSPACE}/6A4ACE07/6A4ACE07.zip" | tee "${logs}/final-zip-test.log"
+          sha256sum "${GITHUB_WORKSPACE}/6A4ACE07/6A4ACE07.zip" | tee "${logs}/final-zip-sha256.txt"
+          sha="$(cut -d' ' -f1 "${logs}/final-zip-sha256.txt")"
+          echo "sha256=${sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload execution logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 6A4ACE07-publish-logs
+          path: ${{ runner.temp }}/6A4ACE07-logs
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Commit final clean project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "${GITHUB_WORKSPACE}/6A4ACE07.zip"
+          rm -rf "${GITHUB_WORKSPACE}/.upload"
+          rm -f "${GITHUB_WORKSPACE}/.gitignore"
+          rm -rf "${GITHUB_WORKSPACE}/docs"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No repository changes to commit."
+          else
+            git commit -m "feat: publish 6A4ACE07 clean project [skip ci]"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Close publication issue
+        if: always() && github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Publication workflow finished with status: **${{ job.status }}**.`
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });
+
+      - name: Write summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## 6A4ACE07 publication"
+            echo
+            echo "- Source files: \`${{ steps.source.outputs.file_count }}\`"
+            echo "- ZIP SHA-256: \`${{ steps.package.outputs.sha256 }}\`"
+            echo "- Published path: \`6A4ACE07/\`"
+            echo "- ZIP path: \`6A4ACE07/6A4ACE07.zip\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
