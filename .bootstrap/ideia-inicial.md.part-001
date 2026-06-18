@@ -1,0 +1,1391 @@
+taxa de processamento;
+
+split de pagamento;
+
+retenção em custódia;
+
+repasse após aprovação.
+
+
+
+---
+
+12. Planos, funcionalidades e limites
+
+O sistema deve possuir gestão de planos integrada a Stripe, feature flags, licenciamento e controle de consumo.
+
+O arquivo define que a gestão de planos controla comercialização, licenciamento, ativação de funcionalidades, limites operacionais e integração com cobrança, integrada ao Stripe e ao mecanismo interno de feature flags, licenciamento e consumo. 
+
+
+---
+
+12.1 Plano
+
+Campos:
+
+id;
+
+código;
+
+nome;
+
+descrição;
+
+status;
+
+tipo do plano;
+
+Stripe Product ID;
+
+Stripe Price ID;
+
+tipo de cobrança;
+
+valor;
+
+moeda;
+
+trial;
+
+ordem de exibição;
+
+destaque comercial;
+
+criado em;
+
+atualizado em.
+
+
+
+---
+
+12.2 Tipos de plano
+
+Plano pessoal
+
+Voltado para:
+
+pessoa física;
+
+consultor;
+
+profissional autônomo;
+
+especialista independente.
+
+
+Limites típicos:
+
+1 usuário;
+
+1 empresa;
+
+0 filiais;
+
+0 equipes.
+
+
+Plano empresarial
+
+Voltado para:
+
+empresas;
+
+franquias;
+
+redes;
+
+grupos econômicos;
+
+consultorias;
+
+software houses.
+
+
+Limites configuráveis:
+
+usuários;
+
+empresas;
+
+filiais;
+
+equipes;
+
+perfis;
+
+integrações;
+
+projetos;
+
+execuções de IA;
+
+tokens;
+
+armazenamento;
+
+especialistas;
+
+documentos;
+
+templates;
+
+prompts privados.
+
+
+
+---
+
+12.3 Funcionalidade
+
+O plano não habilita apenas módulos. Ele habilita funcionalidades específicas.
+
+Estrutura:
+
+Domínio
+ └── Módulo
+      └── Funcionalidade
+
+Exemplo:
+
+Projetos
+ └── Timeline
+      ├── Executar etapa
+      ├── Reexecutar etapa
+      ├── Enviar arquivo
+      ├── Enviar áudio
+      ├── Exportar documento
+      └── Contratar especialista
+
+O arquivo especifica que o plano deve habilitar funcionalidades específicas, e que cada funcionalidade pode possuir limites, como registros, operações, usuários, tokens e chamadas de API. 
+
+
+---
+
+12.4 PlanFeature
+
+Define:
+
+plano;
+
+funcionalidade;
+
+habilitada;
+
+limite de registros;
+
+limite de operações;
+
+limite de usuários;
+
+limite de tokens;
+
+limite de armazenamento;
+
+limite mensal;
+
+limite diário;
+
+regra de bloqueio;
+
+mensagem de bloqueio.
+
+
+
+---
+
+13. Assinaturas e billing
+
+O módulo de assinaturas controla o ciclo de vida comercial dos tenants.
+
+13.1 Assinatura
+
+Cada tenant possui uma assinatura vinculada.
+
+Campos:
+
+plano atual;
+
+Stripe Customer ID;
+
+Stripe Subscription ID;
+
+próxima cobrança;
+
+status da assinatura;
+
+data de contratação;
+
+data de renovação;
+
+data de vencimento;
+
+ciclo;
+
+valor;
+
+histórico.
+
+
+
+---
+
+13.2 Status de assinatura
+
+TRIAL
+ACTIVE
+PAST_DUE
+UNPAID
+SUSPENDED
+CANCELED
+EXPIRED
+
+
+---
+
+13.3 Métricas financeiras
+
+O dashboard financeiro deve apresentar:
+
+MRR;
+
+ARR;
+
+receita total;
+
+receita prevista;
+
+receita recebida;
+
+receita pendente;
+
+receita perdida;
+
+total de assinaturas;
+
+assinaturas ativas;
+
+assinaturas trial;
+
+assinaturas suspensas;
+
+assinaturas canceladas;
+
+inadimplência;
+
+novos clientes;
+
+upgrades;
+
+downgrades;
+
+cancelamentos;
+
+churn rate;
+
+net revenue retention.
+
+
+
+---
+
+13.4 Stripe
+
+A integração com Stripe deve contemplar:
+
+produtos;
+
+preços;
+
+clientes;
+
+assinaturas;
+
+checkout sessions;
+
+invoices;
+
+payment intents;
+
+charges;
+
+webhooks;
+
+sincronização manual;
+
+sincronização automática;
+
+histórico.
+
+
+Webhooks relevantes:
+
+customer.created;
+
+customer.updated;
+
+checkout.session.completed;
+
+invoice.created;
+
+invoice.paid;
+
+invoice.payment_failed;
+
+subscription.created;
+
+subscription.updated;
+
+subscription.deleted.
+
+
+
+---
+
+14. Segurança
+
+O sistema deve possuir um módulo central de segurança enterprise.
+
+14.1 Controles de segurança
+
+políticas de autenticação;
+
+políticas de senha;
+
+MFA;
+
+passkeys;
+
+sessões;
+
+dispositivos confiáveis;
+
+controle de IP;
+
+geolocalização;
+
+APIs e tokens;
+
+OAuth2;
+
+OpenID Connect;
+
+JWT;
+
+segredos e chaves;
+
+certificados;
+
+criptografia;
+
+auditoria de segurança;
+
+SIEM;
+
+detecção de ameaças;
+
+incidentes;
+
+backup;
+
+recuperação;
+
+segurança de IA.
+
+
+
+---
+
+14.2 RBAC + ABAC
+
+A autorização deve combinar:
+
+RBAC, baseado em perfil, função e grupo;
+
+ABAC, baseado em tenant, empresa, filial, horário, localização, IP, dispositivo, plano e atributos do usuário.
+
+
+
+---
+
+14.3 MFA
+
+Métodos suportados:
+
+TOTP;
+
+SMS;
+
+e-mail;
+
+Authenticator;
+
+Passkey;
+
+FIDO2;
+
+WebAuthn.
+
+
+MFA deve ser obrigatório para:
+
+superadministradores;
+
+ações financeiras;
+
+publicação de documentos LGPD;
+
+alteração de segurança;
+
+alteração de permissões;
+
+operações críticas de IA;
+
+acesso a dados sensíveis.
+
+
+
+---
+
+14.4 Segurança de IA
+
+A plataforma deve proteger:
+
+prompts;
+
+agentes;
+
+modelos;
+
+ferramentas;
+
+arquivos enviados;
+
+contexto do cliente;
+
+dados sensíveis;
+
+documentos gerados;
+
+integrações;
+
+saídas da IA.
+
+
+Controles:
+
+detecção de prompt injection;
+
+detecção de jailbreak;
+
+prevenção de vazamento;
+
+mascaramento de dados sensíveis;
+
+bloqueio de segredos;
+
+validação de tool calls;
+
+auditoria de execuções;
+
+revisão de prompts críticos.
+
+
+
+---
+
+15. LGPD
+
+O módulo LGPD controla documentos legais, consentimentos, políticas, finalidades, bases legais e solicitações dos titulares.
+
+O arquivo define o módulo LGPD como responsável pela gestão centralizada de documentos legais, termos, consentimentos, políticas e registros relacionados à conformidade com a Lei Geral de Proteção de Dados, podendo disponibilizar documentos globais ou específicos por tenant. 
+
+
+---
+
+15.1 Documentos LGPD
+
+Tipos padrão:
+
+Política de Privacidade;
+
+Termos de Uso;
+
+Política de Cookies;
+
+Política de Segurança;
+
+Consentimento de Marketing;
+
+Consentimento de Tratamento de Dados;
+
+DPA;
+
+Política de Retenção de Dados;
+
+Código de Conduta;
+
+Documento Personalizado.
+
+
+
+---
+
+15.2 LgpdDocument
+
+Campos:
+
+id;
+
+código;
+
+nome;
+
+tipo;
+
+categoria;
+
+status;
+
+versão;
+
+tenant;
+
+global;
+
+data de publicação;
+
+data de expiração;
+
+exigir aceite;
+
+aceite obrigatório;
+
+requer nova aceitação;
+
+HTML;
+
+texto puro;
+
+observações.
+
+
+
+---
+
+15.3 Aceites
+
+Cada aceite deve registrar:
+
+usuário;
+
+documento;
+
+versão;
+
+data;
+
+IP;
+
+navegador;
+
+tenant.
+
+
+Aceite pode ser obrigatório:
+
+no cadastro;
+
+no login;
+
+na renovação;
+
+na contratação de especialista;
+
+antes de pagamento;
+
+após nova versão;
+
+antes de criar projeto.
+
+
+
+---
+
+15.4 Solicitações do titular
+
+Tipos:
+
+acesso aos dados;
+
+correção;
+
+exclusão;
+
+portabilidade;
+
+revogação de consentimento.
+
+
+Cada solicitação deve ter:
+
+protocolo;
+
+status;
+
+responsável;
+
+prazo;
+
+histórico;
+
+documentos;
+
+auditoria.
+
+
+
+---
+
+16. Auditoria
+
+A auditoria deve ser configurável e aplicada em toda a plataforma.
+
+16.1 AuditConfiguration
+
+Permite definir:
+
+domínio;
+
+módulo;
+
+funcionalidade;
+
+tela;
+
+ação;
+
+evento;
+
+nível de log;
+
+retenção;
+
+obrigatoriedade;
+
+escopo.
+
+
+
+---
+
+16.2 AuditLog
+
+Cada log deve registrar:
+
+id;
+
+tenant;
+
+empresa;
+
+filial;
+
+usuário;
+
+perfil;
+
+domínio;
+
+módulo;
+
+funcionalidade;
+
+tela;
+
+ação;
+
+evento;
+
+endpoint;
+
+método HTTP;
+
+payload de entrada;
+
+payload de saída;
+
+IP;
+
+navegador;
+
+data e hora;
+
+status;
+
+erro;
+
+correlação;
+
+execução de IA, se aplicável.
+
+
+O arquivo especifica auditoria configurável por domínio, módulo, funcionalidade, tela e evento, além de logs com tenant, usuário, perfil, endpoint, payloads, IP, navegador e data/hora. 
+
+
+---
+
+17. Escopo universal de dados
+
+Essa é uma regra estrutural obrigatória.
+
+Todo registro da plataforma deve possuir escopo.
+
+Nenhum dado funcional pode existir sem contexto.
+
+17.1 Hierarquia de escopo
+
+GLOBAL
+ └── TENANT
+      └── COMPANY
+           └── BRANCH
+                └── PROFILE
+                     └── USER
+
+
+---
+
+17.2 Tipos de escopo
+
+GLOBAL;
+
+TENANT;
+
+COMPANY;
+
+BRANCH;
+
+PROFILE;
+
+USER.
+
+
+
+---
+
+17.3 BaseScopedEntity
+
+Toda entidade funcional deve possuir:
+
+id;
+
+scopeType;
+
+tenantId;
+
+companyId;
+
+branchId;
+
+profileId;
+
+userId;
+
+visibilityRule;
+
+createdBy;
+
+createdAt;
+
+updatedBy;
+
+updatedAt;
+
+deletedBy;
+
+deletedAt;
+
+deletionReason.
+
+
+
+---
+
+17.4 Aplicação obrigatória
+
+O escopo deve ser aplicado em:
+
+entidades;
+
+APIs;
+
+consultas;
+
+listagens;
+
+detalhes;
+
+inclusões;
+
+edições;
+
+exclusões;
+
+exportações;
+
+auditorias;
+
+eventos;
+
+integrações;
+
+documentos;
+
+prompts;
+
+templates;
+
+configurações;
+
+execuções de IA;
+
+arquivos;
+
+especialistas;
+
+pagamentos.
+
+
+
+---
+
+18. CRUD universal e soft delete
+
+Todas as funcionalidades cadastráveis devem seguir o mesmo padrão.
+
+O arquivo define uma regra arquitetural obrigatória: toda funcionalidade deve possuir listagem, visualização, inclusão, edição, exclusão com confirmação, soft delete, auditoria, controle de escopo, controle de permissões, histórico, filtros, APIs compatíveis e suporte multi-tenant. 
+
+
+---
+
+18.1 Telas obrigatórias
+
+Toda funcionalidade deve ter:
+
+listagem;
+
+visualização;
+
+detalhamento;
+
+inclusão;
+
+edição;
+
+exclusão lógica;
+
+histórico;
+
+auditoria.
+
+
+
+---
+
+18.2 Rotas padrão
+
+/{modulo}/{funcionalidade}
+/{modulo}/{funcionalidade}/{id}
+/{modulo}/{funcionalidade}/novo
+/{modulo}/{funcionalidade}/{id}/editar
+
+
+---
+
+18.3 Soft delete obrigatório
+
+Nenhum dado deve ser removido fisicamente.
+
+Proibido:
+
+DELETE FROM tabela
+
+Permitido:
+
+UPDATE tabela
+SET
+  deleted_at = NOW(),
+  deleted_by = :usuario,
+  deletion_reason = :motivo
+WHERE id = :id
+
+
+---
+
+19. Templates e edição HTML
+
+A plataforma deve possuir templates reutilizáveis para:
+
+documentos;
+
+e-mails;
+
+notificações;
+
+LGPD;
+
+etapas;
+
+timelines;
+
+propostas;
+
+contratos;
+
+documentos técnicos;
+
+mensagens do sistema.
+
+
+
+---
+
+19.1 Componentes compartilhados
+
+HtmlEditor;
+
+HtmlRenderer;
+
+HtmlPreview;
+
+HtmlSanitizer;
+
+VersionComparisonViewer.
+
+
+
+---
+
+19.2 Recursos do editor
+
+modo visual;
+
+modo código;
+
+modo split;
+
+preview desktop;
+
+preview tablet;
+
+preview mobile;
+
+sanitização;
+
+bloqueio de scripts;
+
+bloqueio de javascript:;
+
+bloqueio de iframes não autorizados.
+
+
+
+---
+
+20. Menus finais da plataforma
+
+20.1 Menu Superadministrador
+
+Superadministrador
+ ├── Alternador de Escopo
+ ├── Dashboard Global
+ ├── Tenants
+ │    ├── Dashboard Tenant
+ │    ├── Usuários
+ │    ├── Empresas
+ │    ├── Filiais
+ │    ├── Projetos
+ │    ├── Auditoria
+ │    ├── Consumo
+ │    └── Assinatura
+ ├── Planos
+ │    ├── Pessoal
+ │    ├── Empresarial
+ │    ├── Produtos Stripe
+ │    ├── Preços Stripe
+ │    ├── URLs de Pagamento
+ │    └── Histórico
+ ├── Assinaturas
+ │    ├── Dashboard
+ │    ├── Assinaturas
+ │    ├── Pagamentos
+ │    ├── Inadimplência
+ │    ├── Upgrades e Downgrades
+ │    ├── Cobranças
+ │    ├── Relatórios
+ │    ├── Stripe Sync
+ │    └── Auditoria
+ ├── Funcionalidades
+ ├── Perfis e Permissões
+ ├── IA
+ │    ├── Agentes
+ │    ├── Prompts
+ │    ├── Modelos
+ │    ├── Execuções
+ │    ├── Custos
+ │    └── Configurações
+ ├── Templates
+ │    ├── Documentos
+ │    ├── E-mails
+ │    ├── Notificações
+ │    ├── Timelines
+ │    └── Etapas
+ ├── Especialistas
+ │    ├── Especialistas
+ │    ├── Skills
+ │    ├── Convites
+ │    ├── Contratações
+ │    └── Repasses
+ ├── LGPD
+ ├── Segurança
+ ├── Auditoria
+ ├── Billing
+ ├── Feature Flags
+ ├── Validações
+ └── Configurações Globais
+
+
+---
+
+20.2 Menu Cliente
+
+Cliente
+ ├── Dashboard
+ ├── Novo Sistema
+ ├── Sistemas / Projetos
+ │    ├── Timeline
+ │    ├── Etapas
+ │    ├── Documentos
+ │    ├── Arquivos
+ │    ├── Links
+ │    ├── Comentários
+ │    ├── Especialistas
+ │    └── Histórico
+ ├── Especialistas
+ │    ├── Buscar Especialista
+ │    ├── Contratações
+ │    └── Pagamentos
+ ├── Documentos
+ ├── Arquivos
+ ├── Usuários
+ ├── Empresas
+ ├── Filiais
+ ├── Assinatura
+ ├── Consumo
+ ├── Configurações
+ └── LGPD / Termos
+
+
+---
+
+20.3 Menu Especialista
+
+Especialista
+ ├── Dashboard
+ ├── Perfil
+ ├── Skills
+ ├── Convites
+ ├── Trabalhos Ativos
+ ├── Etapas Vinculadas
+ ├── Horas
+ ├── Pagamentos
+ ├── Avaliações
+ └── Configurações
+
+
+---
+
+21. Entidades principais finais
+
+21.1 Administração
+
+SuperAdminUser;
+
+Tenant;
+
+Company;
+
+Branch;
+
+TenantUser;
+
+GlobalSettings;
+
+TenantConfiguration;
+
+SystemConfiguration;
+
+FeatureFlag.
+
+
+21.2 IA
+
+AiAgent;
+
+AiPrompt;
+
+AiPromptVersion;
+
+AiModel;
+
+AiExecution;
+
+AiExecutionLog;
+
+AiProvider;
+
+AiTool;
+
+KnowledgeBase.
+
+
+21.3 Projetos
+
+Project;
+
+ProjectFile;
+
+ProjectLink;
+
+ProjectAudio;
+
+ProjectTimeline;
+
+ProjectStep;
+
+StepExecution;
+
+GeneratedDocument;
+
+DocumentVersion;
+
+Approval;
+
+Comment.
+
+
+21.4 Timeline
+
+TimelineTemplate;
+
+TimelineTemplateStep;
+
+StepTemplate;
+
+StepRequiredSkill;
+
+StepInputSchema;
+
+StepOutputSchema;
+
+StepDocumentDefinition.
+
+
+21.5 Especialistas
+
+Specialist;
+
+Skill;
+
+SpecialistSkill;
+
+SpecialistInvitation;
+
+SpecialistContract;
+
+SpecialistContractHour;
+
+SpecialistPayment;
+
+SpecialistPayout;
+
+SpecialistReview.
+
+
+21.6 Planos e billing
+
+Plan;
+
+PlanFeature;
+
+Feature;
+
+FeatureLimit;
+
+Subscription;
+
+SubscriptionHistory;
+
+SubscriptionUsage;
+
+Payment;
+
+Invoice;
+
+StripeCustomer;
+
+StripeProduct;
+
+StripePrice;
+
+StripeSubscription;
+
+StripeInvoice;
+
+StripeWebhook;
+
+StripeCheckoutSession.
+
+
+21.7 Segurança
+
+Profile;
+
+ProfilePermission;
+
+SecurityPolicy;
+
+AuthenticationPolicy;
+
+PasswordPolicy;
+
+MfaPolicy;
+
+SessionPolicy;
+
+AccessPolicy;
+
+TrustedDevice;
+
+IpRule;
+
+GeoRule;
+
+ApiKey;
+
+OAuthClient;
+
+SecretVault;
+
+Certificate;
+
+EncryptionPolicy;
+
+SecurityEvent;
+
+SecurityIncident;
+
+ThreatDetectionRule;
+
+AiSecurityPolicy.
+
+
+21.8 LGPD
+
+LgpdDocument;
+
+LgpdDocumentVersion;
+
+LgpdAcceptance;
+
+LgpdCategory;
+
+LgpdPurpose;
+
+LgpdLegalBasis;
+
+LgpdRequest;
+
+LgpdRequestHistory;
+
+LgpdConfiguration;
+
+LgpdAuditLog.
+
+
+21.9 Auditoria
+
+AuditConfiguration;
+
+AuditEvent;
+
+AuditLog;
+
+SecurityAuditLog;
+
+AiExecutionAuditLog;
+
+LgpdAuditLog.
+
+
+
+---
+
+22. Definição final consolidada
+
+A definição final do sistema é:
+
+> Uma plataforma SaaS B2B multi-tenant enterprise para criação de sistemas com inteligência artificial, onde o Superadministrador configura toda a governança da plataforma — tenants, empresas, filiais, planos, assinaturas, funcionalidades, limites, permissões, segurança, LGPD, auditoria, billing, prompts, agentes de IA, modelos, templates, timelines, etapas, documentos e especialistas — enquanto empresas clientes criam projetos de sistemas a partir de ideias iniciais, enviam textos, arquivos, links, áudios e imagens, percorrem uma timeline de etapas configuráveis, executam assistentes de IA compostos por prompts versionados, geram documentos estruturados e versionados, reexecutam etapas com novos contextos, aprovam entregáveis e contratam especialistas humanos por hora conforme as skills exigidas em cada etapa.
+
+
+
+Em termos arquiteturais, o sistema é uma fábrica de sistemas orientada a IA, documentos, etapas, escopo e governança, com:
+
+multi-tenant;
+
+multiempresa;
+
+matriz e filial;
+
+escopo universal de dados;
+
+soft delete obrigatório;
+
+CRUD padronizado;
+
+auditoria total;
+
+RBAC + ABAC;
+
+segurança enterprise;
+
+LGPD nativo;
+
+billing com Stripe;
+
+planos granulares por funcionalidade;
+
+controle de consumo;
+
+prompts versionados;
+
+agentes configuráveis;
+
+execução rastreável de IA;
+
+documentos versionados;
+
+marketplace de especialistas;
+
+pagamento por hora;
+
+custódia e repasse;
+
+dashboards globais;
+
+dashboards por tenant;
+
+controle centralizado pelo Superadministrador.
+
+
+A plataforma não é apenas um gerador de sistemas por prompt. Ela é uma infraestrutura completa para transformar ideias em sistemas especificados, documentados, revisados, governados, auditados e preparados para desenvolvimento, combinando IA, workflow, documentação, segurança, billing e especialistas humanos em um único ecossistema SaaS enterprise.
