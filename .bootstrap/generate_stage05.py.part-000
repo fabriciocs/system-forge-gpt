@@ -1,0 +1,128 @@
+from __future__ import annotations
+import json, re, html
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+ROOT=Path.cwd()/'64BD1EFD'; DOCS=ROOT/'docs'
+STITCH=DOCS/'stitch'; I18N=DOCS/'i18n'; WF=DOCS/'wireframes'
+for p in [STITCH,I18N,WF/'mobile',WF/'tablet',WF/'desktop']:
+    p.mkdir(parents=True,exist_ok=True)
+
+screens=[
+('00-01','Landing page','/','Público','landing','anonymous','public.read','MarketingContent','email,segmento,aceite_termos','default,loading,error','explorar,entrar,criar_conta'),
+('00-02','Login','/login','IAM','auth','anonymous','auth.login','USER,SECURITY_POLICY','email,senha,remember_me','default,loading,error,blocked','entrar,recuperar_senha'),
+('00-03','MFA e recuperação','/auth/mfa','IAM','auth','authenticated-pending','auth.mfa.verify','USER,MFA_POLICY,TRUSTED_DEVICE','method,code,trust_device','default,loading,error,blocked','verificar,usar_recuperacao'),
+('00-04','Seleção de contexto','/context','IAM','context','authenticated','scope.switch','TENANT_USER,TENANT_USER_PROFILE,COMPANY,BRANCH','tenant,company,branch,profile','loading,empty,error,no-permission','selecionar,buscar'),
+('10-01','Dashboard global','/admin','Superadmin','dashboard','superadmin','global.dashboard.read','TENANT,SUBSCRIPTION,AI_EXECUTION,PAYMENT,AUDIT_LOG','periodo,segmento,status','loading,skeleton,empty,error,ready','filtrar,drill_down,exportar'),
+('10-02','Tenants','/admin/tenants','Superadmin','list','superadmin','tenant.read','TENANT,SUBSCRIPTION','search,status,plan,created_at','loading,empty,error,read-only','buscar,filtrar,novo,abrir'),
+('10-03','Detalhe do tenant','/admin/tenants/:tenantId','Superadmin','detail','superadmin','tenant.read','TENANT,COMPANY,BRANCH,TENANT_USER,SUBSCRIPTION','name,status,plan,limits,scope','loading,error,blocked,read-only','suspender,impersonar,editar'),
+('10-04','Planos e funcionalidades','/admin/plans','Billing','master-detail','finance-admin','plan.manage','PLAN,FEATURE,PLAN_FEATURE','code,name,amount,currency,limits','loading,empty,error,read-only','criar,versionar,publicar,arquivar'),
+('10-05','Assinaturas e pagamentos','/admin/subscriptions','Billing','list-dashboard','finance-admin','subscription.read','SUBSCRIPTION,PAYMENT,INVOICE','period,status,plan,tenant','loading,empty,error,processing','filtrar,sincronizar,reprocessar'),
+('10-06','Feature flags','/admin/feature-flags','Governança','list-editor','master-admin','feature-flag.manage','FEATURE_FLAG,FEATURE_FLAG_RULE','code,status,scope,rollout,conditions','loading,empty,error,read-only','criar,pausar,editar,auditar'),
+('11-01','Agentes de IA','/admin/ai/agents','IA','list','ai-admin','ai-agent.read','AI_AGENT,AI_MODEL','search,status,model,tenant','loading,empty,error,read-only','novo,duplicar,abrir,arquivar'),
+('11-02','Editor de agente','/admin/ai/agents/:agentId','IA','editor','ai-admin','ai-agent.manage','AI_AGENT,AGENT_PROMPT,AI_MODEL','name,code,model,temperature,max_tokens,prompts','loading,error,read-only,processing-ai','salvar,validar,publicar,testar'),
+('11-03','Prompts e versões','/admin/ai/prompts','IA','list-editor','ai-admin','ai-prompt.manage','AI_PROMPT_VERSION','code,name,status,provider,schemas,tools','loading,empty,error,read-only','criar_nova_versao,comparar,ativar'),
+('11-04','Execuções de IA','/admin/ai/executions','IA','observability','ai-admin,auditor','ai-execution.read','AI_EXECUTION,AI_EXECUTION_PROMPT','period,status,model,tenant,correlation','loading,empty,error,processing-ai','filtrar,abrir,retry,cancelar'),
+('11-05','Custos e qualidade de IA','/admin/ai/costs','IA','analytics','ai-admin,finance-admin','ai-cost.read','AI_EXECUTION,AI_MODEL','period,provider,model,tenant','loading,empty,error,ready','filtrar,exportar,definir_alerta'),
+('12-01','Templates de timeline','/admin/templates/timelines','Templates','list','master-admin','timeline-template.read','TIMELINE_TEMPLATE','search,status,category,version','loading,empty,error,read-only','novo,duplicar,abrir,arquivar'),
+('12-02','Editor de timeline','/admin/templates/timelines/:templateId','Templates','visual-editor','master-admin','timeline-template.manage','TIMELINE_TEMPLATE,TIMELINE_TEMPLATE_STEP,STEP_TEMPLATE,STEP_DEPENDENCY','name,version,steps,dependencies,conditions','loading,error,blocked,read-only','adicionar_etapa,reordenar,validar,publicar'),
+('13-01','Especialistas e skills','/admin/specialists','Especialistas','list','operations-admin','specialist.read','SPECIALIST,SKILL,SPECIALIST_SKILL','search,status,skill,rate,availability','loading,empty,error,read-only','convidar,abrir,suspender'),
+('13-02','Detalhe do especialista','/admin/specialists/:specialistId','Especialistas','detail','operations-admin','specialist.manage','SPECIALIST,SPECIALIST_SKILL,SPECIALIST_REVIEW','bio,skills,rate,documents,status','loading,error,read-only,blocked','aprovar,suspender,editar_skills'),
+('13-03','Contratos, horas e repasses','/admin/specialist-contracts','Especialistas','operations','finance-admin,operations-admin','specialist-contract.read','SPECIALIST_CONTRACT,SPECIALIST_CONTRACT_HOUR,SPECIALIST_PAYMENT,SPECIALIST_PAYOUT','period,status,specialist,tenant','loading,empty,error,processing','aprovar_horas,liberar_repasse,abrir_disputa'),
+('14-01','Políticas de segurança','/admin/security','Segurança','settings','security-admin','security-policy.manage','SECURITY_POLICY,MFA_POLICY,SESSION_POLICY,ACCESS_POLICY','mfa,password,session,ip,geo,ai_policy','loading,error,read-only,success','salvar,simular,publicar'),
+('14-02','Documentos LGPD','/admin/lgpd/documents','LGPD','list-editor','dpo','lgpd-document.manage','LGPD_DOCUMENT,LGPD_DOCUMENT_VERSION,LGPD_ACCEPTANCE','type,status,scope,version,publish_at','loading,empty,error,read-only','novo,versionar,publicar,ver_aceites'),
+('14-03','Solicitações dos titulares','/admin/lgpd/requests','LGPD','case-management','dpo','lgpd-request.manage','LGPD_REQUEST,LGPD_REQUEST_HISTORY','protocol,type,status,due_at,owner','loading,empty,error,blocked','atribuir,alterar_status,exportar_dados'),
+('14-04','Auditoria global','/admin/audit','Auditoria','explorer','auditor','audit-log.read','AUDIT_LOG,AUDIT_EVENT,AUDIT_CONFIGURATION','period,tenant,user,domain,event,correlation','loading,empty,error,no-permission','filtrar,abrir,exportar'),
+('14-05','Configurações globais','/admin/settings','Governança','settings','master-admin','global-settings.manage','SCOPED_CONFIGURATION,INTEGRATION','key,scope,value,origin,version','loading,error,read-only,success','editar,validar,publicar,reverter'),
+('20-01','Dashboard do cliente','/app','Cliente','dashboard','tenant-user','project.dashboard.read','PROJECT,PROJECT_STEP,DOCUMENT_VERSION,SUBSCRIPTION_USAGE','period,status,company','loading,skeleton,empty,error','novo_sistema,abrir_projeto,ver_consumo'),
+('20-02','Novo sistema','/app/projects/new','Projetos','wizard','owner,manager,analyst','project.create','PROJECT,PROJECT_FILE,TIMELINE_TEMPLATE','name,initial_idea,problem,audience,type,files,links,template','default,uploading,processing,error,success','salvar_rascunho,criar_projeto'),
+('20-03','Projetos','/app/projects','Projetos','list','tenant-user','project.read','PROJECT,PROJECT_TIMELINE','search,status,company,owner,updated_at','loading,empty,error,read-only','filtrar,novo,abrir,arquivar'),
+('20-04','Visão do projeto','/app/projects/:projectId','Projetos','overview','project-member','project.read','PROJECT,PROJECT_TIMELINE,PROJECT_STEP,DOCUMENT_VERSION','status,progress,risks,next_step','loading,error,blocked,read-only','editar_contexto,abrir_timeline,exportar'),
+('20-05','Timeline do projeto','/app/projects/:projectId/timeline','Workflow','timeline','project-member','project-step.read','PROJECT_TIMELINE,PROJECT_STEP,STEP_DEPENDENCY','status,owner,dependency','loading,empty,error,blocked','abrir_etapa,filtrar_status,ver_dependencias'),
+('20-06','Workspace da etapa','/app/projects/:projectId/steps/:stepId','Workflow','workspace','analyst,manager,approver','project-step.execute','PROJECT_STEP,STEP_EXECUTION,PROJECT_FILE,AI_EXECUTION','text,files,links,reason,agent','loading,processing-ai,error,blocked,no-permission,read-only,success','executar,reexecutar,salvar,contratar_especialista'),
+('20-07','Documento gerado','/app/projects/:projectId/documents/:documentId','Documentos','reader','project-member','document.read','GENERATED_DOCUMENT,DOCUMENT_VERSION,APPROVAL,COMMENT','version,status,format,comments','loading,error,read-only,no-permission','aprovar,rejeitar,comentar,exportar,comparar'),
+('20-08','Comparação de versões','/app/projects/:projectId/documents/:documentId/compare','Documentos','comparison','project-member','document.compare','DOCUMENT_VERSION','left_version,right_version,view_mode','loading,error,empty','trocar_versoes,aprovar_versao,exportar_diff'),
+('20-09','Arquivos e contexto','/app/projects/:projectId/files','Projetos','asset-manager','project-member','project-file.manage','PROJECT_FILE','search,type,status,step,classification','loading,uploading,empty,error,blocked','enviar,baixar,associar_etapa,remover'),
+('20-10','Especialistas do projeto','/app/projects/:projectId/specialists','Especialistas','matching','manager,owner','specialist.match','SPECIALIST,SKILL,SPECIALIST_CONTRACT','skill,level,rate,availability,hours','loading,empty,error,processing','buscar,convidar,contratar'),
+('20-11','Assinatura e consumo','/app/settings/subscription','Billing','account','owner,finance','subscription.read','SUBSCRIPTION,SUBSCRIPTION_USAGE,PAYMENT','plan,period,metric,payment_method','loading,empty,error,blocked','upgrade,portal,exportar_consumo'),
+('20-12','Usuários e permissões','/app/settings/users','IAM','admin-list','owner,admin','tenant-user.manage','TENANT_USER,PROFILE,TENANT_USER_PROFILE','search,status,profile,company,branch','loading,empty,error,no-permission','convidar,editar_perfil,revogar'),
+('20-13','Empresas e filiais','/app/settings/organization','Tenancy','tree-admin','owner,admin','organization.manage','COMPANY,BRANCH','company,branch,code,status','loading,empty,error,read-only','nova_empresa,nova_filial,editar,arquivar'),
+('20-14','Integrações do tenant','/app/settings/integrations','Integrações','catalog','owner,admin,integrator','integration.manage','INTEGRATION,INTEGRATION_CREDENTIAL,WEBHOOK_ENDPOINT','type,name,scopes,status,endpoint','loading,empty,error,processing','conectar,testar,rotacionar,desativar'),
+('30-01','Dashboard do especialista','/expert','Especialista','dashboard','specialist','specialist.dashboard.read','SPECIALIST,SPECIALIST_CONTRACT,SPECIALIST_CONTRACT_HOUR','period,status,availability','loading,empty,error','ver_convites,abrir_trabalho,registrar_horas'),
+('30-02','Perfil e skills','/expert/profile','Especialista','profile-editor','specialist','specialist.profile.manage','SPECIALIST,SPECIALIST_SKILL,SKILL','bio,rate,timezone,skills,portfolio,availability','loading,error,read-only,success','salvar,enviar_documentos'),
+('30-03','Convites e trabalhos','/expert/jobs','Especialista','list','specialist','specialist-contract.read','SPECIALIST_CONTRACT,PROJECT_STEP','status,skill,rate,hours,deadline','loading,empty,error,blocked','aceitar,recusar,abrir_trabalho'),
+('30-04','Horas e pagamentos','/expert/payments','Especialista','finance','specialist','specialist-payment.read','SPECIALIST_CONTRACT_HOUR,SPECIALIST_PAYMENT,SPECIALIST_PAYOUT','period,status,contract','loading,empty,error,processing','registrar_horas,ver_detalhe,exportar'),
+]
+
+# i18n data
+translations={'app':{'name':'System Forge Enterprise','tagline':'Da ideia ao sistema governado'},'common':{'search':'Buscar','filter':'Filtrar','save':'Salvar','cancel':'Cancelar','edit':'Editar','delete':'Excluir','loading':'Carregando','retry':'Tentar novamente','noPermission':'Sem permissão','readOnly':'Somente leitura','blocked':'Bloqueado','processingAi':'IA processando'},'screens':{}}
+for sid,title,route,module,ptype,auth,perm,entities,fields,states,actions in screens:
+    key=sid.replace('-','_')
+    translations['screens'][key]={'title':title,'route':route,'module':module,'actions':{a:a.replace('_',' ').capitalize() for a in actions.split(',')},'fields':{f:f.replace('_',' ').capitalize() for f in fields.split(',')}}
+(I18N/'pt-br.json').write_text(json.dumps(translations,ensure_ascii=False,indent=2),encoding='utf-8')
+
+# SVG generator
+sizes={'mobile':(390,844),'tablet':(768,1024),'desktop':(1440,1024)}
+def svg_screen(screen,res):
+    sid,title,route,module,ptype,auth,perm,entities,fields,states,actions=screen
+    w,h=sizes[res]
+    navw=0 if res=='mobile' else (80 if res=='tablet' else 260)
+    top=64 if res=='mobile' else 72
+    content_x=16+navw; content_w=w-content_x-16
+    cols=1 if res=='mobile' else (2 if res=='tablet' else 3)
+    gap=16; card_w=(content_w-gap*(cols-1))/cols
+    bg='#0C1117'; surface='#151C24'; outline='#303944'; text='#E3E8EF'; muted='#AEB8C3'; primary='#62B5F5'; tertiary='#FFB86A'
+    out=[f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" role="img" aria-labelledby="title desc">',f'<title id="title">{html.escape(title)} — {res}</title>',f'<desc id="desc">Wireframe de alta fidelidade da tela {html.escape(title)} na resolução {w} por {h}</desc>',f'<rect width="{w}" height="{h}" fill="{bg}"/>']
+    if navw:
+        out += [f'<rect x="0" y="0" width="{navw}" height="{h}" fill="{surface}"/>',f'<circle cx="{navw/2}" cy="36" r="18" fill="none" stroke="{primary}" stroke-width="3"/>']
+        for i in range(6):
+            yy=100+i*58; out.append(f'<rect x="{20 if res=="desktop" else 22}" y="{yy}" width="{navw-40 if res=="desktop" else 36}" height="36" rx="18" fill="{outline if i else primary}" opacity="{1 if i else .9}"/>')
+    out += [f'<rect x="{navw}" y="0" width="{w-navw}" height="{top}" fill="{surface}"/>',f'<text x="{content_x}" y="{top+44}" fill="{muted}" font-family="Inter,Arial" font-size="12">{html.escape(module)}  /  {html.escape(route)}</text>',f'<text x="{content_x}" y="{top+82}" fill="{text}" font-family="Inter,Arial" font-size="{24 if res=="mobile" else 30}" font-weight="700">{html.escape(title)}</text>',f'<rect x="{content_x}" y="{top+100}" width="{min(180,content_w*.45)}" height="4" rx="2" fill="{tertiary}"/>']
+    y=top+130
+    # filter/action bar
+    out += [f'<rect x="{content_x}" y="{y}" width="{content_w}" height="56" rx="14" fill="{surface}" stroke="{outline}"/>',f'<rect x="{content_x+12}" y="{y+12}" width="{min(240,content_w*.45)}" height="32" rx="16" fill="{outline}"/>',f'<rect x="{content_x+content_w-112}" y="{y+10}" width="100" height="36" rx="18" fill="{primary}"/>']
+    y+=76
+    for i in range(cols*2):
+        col=i%cols; row=i//cols; x=content_x+col*(card_w+gap); yy=y+row*156
+        out += [f'<rect x="{x}" y="{yy}" width="{card_w}" height="140" rx="16" fill="{surface}" stroke="{outline}"/>',f'<rect x="{x+16}" y="{yy+18}" width="{card_w*.52}" height="12" rx="6" fill="{primary}" opacity=".85"/>',f'<rect x="{x+16}" y="{yy+48}" width="{card_w-32}" height="8" rx="4" fill="{outline}"/>',f'<rect x="{x+16}" y="{yy+66}" width="{card_w*.74}" height="8" rx="4" fill="{outline}"/>',f'<rect x="{x+16}" y="{yy+103}" width="{min(96,card_w*.32)}" height="24" rx="12" fill="{tertiary}" opacity=".75"/>']
+    # bottom nav mobile
+    if res=='mobile':
+        out += [f'<rect x="0" y="{h-72}" width="{w}" height="72" fill="{surface}"/>']
+        for i in range(4): out.append(f'<circle cx="{49+i*97}" cy="{h-39}" r="12" fill="{primary if i==0 else outline}"/>')
+    out.append('</svg>')
+    return ''.join(out)
+
+for screen in screens:
+    sid=screen[0]; slug=re.sub(r'[^a-z0-9]+','-',screen[1].lower()).strip('-')
+    for res in sizes:
+        p=WF/res/f'{sid}-{slug}.svg'; p.write_text(svg_screen(screen,res),encoding='utf-8'); ET.fromstring(p.read_text(encoding='utf-8'))
+
+# Screen inventory rows
+rows=[]
+for s in screens:
+    sid,title,route,module,ptype,auth,perm,entities,fields,states,actions=s
+    slug=re.sub(r'[^a-z0-9]+','-',title.lower()).strip('-')
+    rows.append(f'| {sid} | {title} | `{route}` | {module} | {auth} | `{perm}` | {entities} | {fields} | {states} | {actions} | `wireframes/{{mobile,tablet,desktop}}/{sid}-{slug}.svg` |')
+
+# Feature coverage mapping by domains
+coverage={
+'Fundação pública e IAM':['00-01','00-02','00-03','00-04'],
+'Control plane e tenancy':['10-01','10-02','10-03','14-05'],
+'Billing e feature management':['10-04','10-05','10-06','20-11'],
+'IA governada':['11-01','11-02','11-03','11-04','11-05'],
+'Templates e workflow':['12-01','12-02','20-05','20-06'],
+'Especialistas':['13-01','13-02','13-03','20-10','30-01','30-02','30-03','30-04'],
+'Segurança, LGPD e auditoria':['14-01','14-02','14-03','14-04'],
+'Projetos e documentos':['20-01','20-02','20-03','20-04','20-07','20-08','20-09'],
+'Administração do tenant':['20-12','20-13','20-14'],
+}
+
+# Stitch docs
+(STITCH/'0-projeto.md').write_text('''# Projeto Stitch — System Forge Enterprise
+
+Objetivo: gerar interfaces administrativas e operacionais para um SaaS B2B de criação de sistemas com IA, usando os artefatos oficiais de `../00.md`, `../core.md`, `../design.md`, `../03.md`, `../04.md` e `../05.md`.
+
+Telas: todas as rotas do NAVIGATION-INVENTORY. Componentes: app shell adaptativo, context switcher, timeline, document reader, matrizes, observabilidade e estados completos. Estados: loading, skeleton, empty, error, blocked, no-permission, read-only e processing-ai. Referências: tokens em `../theme/tokens.angular.json` e i18n em `../i18n/pt-br.json`.
+''',encoding='utf-8')
+(STITCH/'0-core.md').write_text((DOCS/'core.md').read_text(encoding='utf-8')+'\n\n## Aplicação Stitch\n\nPreservar contexto ativo, rastreabilidade e ações humanas em todos os layouts.\n',encoding='utf-8')
+(STITCH/'DESIGN.md').write_text((DOCS/'design.md').read_text(encoding='utf-8')+'\n\n## Tokens\n\nConsumir aliases oficiais; não criar cores ou espaçamentos arbitrários.\n',encoding='utf-8')
