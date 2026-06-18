@@ -17,8 +17,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  extract-and-commit:
-    name: Extract, remove archives, and commit
+  extract-build-and-commit:
+    name: Extract, build dashboard, and commit
     runs-on: ubuntu-latest
 
     steps:
@@ -139,20 +139,121 @@ jobs:
                       summary.write(f"- `{name}`\n")
           PY
 
-      - name: Commit and push extracted files
+      - name: Set up Node.js
+        if: steps.extract.outputs.processed_count != '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies and build dashboard
+        id: dashboard_build
         if: steps.extract.outputs.processed_count != '0'
         shell: bash
+        run: |
+          set +e
+
+          dashboard_dir="${GITHUB_WORKSPACE}/docs/dashboard"
+          timestamp="$(date -u +'%Y%m%d%H%M%Sz')"
+          relative_log_file="docs/dashboard/logs/${timestamp}.log"
+          log_file="${GITHUB_WORKSPACE}/${relative_log_file}"
+          exit_code=0
+
+          mkdir -p "$(dirname "${log_file}")"
+
+          {
+            echo "Dashboard build log"
+            echo "UTC timestamp: ${timestamp}"
+            echo "Repository: ${GITHUB_REPOSITORY}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Node: $(node --version 2>&1)"
+            echo "npm: $(npm --version 2>&1)"
+            echo
+          } | tee "${log_file}"
+
+          if [[ ! -d "${dashboard_dir}" ]]; then
+            echo "ERROR: Directory docs/dashboard was not found after ZIP extraction." \
+              | tee -a "${log_file}"
+            exit_code=1
+          elif [[ ! -f "${dashboard_dir}/package.json" ]]; then
+            echo "ERROR: File docs/dashboard/package.json was not found." \
+              | tee -a "${log_file}"
+            exit_code=1
+          else
+            cd "${dashboard_dir}"
+
+            echo "===== npm install --verbose =====" | tee -a "${log_file}"
+            npm install --verbose 2>&1 | tee -a "${log_file}"
+            install_exit_code=${PIPESTATUS[0]}
+            echo "npm install exit code: ${install_exit_code}" | tee -a "${log_file}"
+
+            if [[ ${install_exit_code} -ne 0 ]]; then
+              exit_code=${install_exit_code}
+              echo "Build skipped because npm install failed." | tee -a "${log_file}"
+            else
+              echo | tee -a "${log_file}"
+              echo "===== npm run build =====" | tee -a "${log_file}"
+              npm run build 2>&1 | tee -a "${log_file}"
+              build_exit_code=${PIPESTATUS[0]}
+              echo "npm run build exit code: ${build_exit_code}" | tee -a "${log_file}"
+
+              if [[ ${build_exit_code} -ne 0 ]]; then
+                exit_code=${build_exit_code}
+              fi
+            fi
+          fi
+
+          # Never commit installed dependencies. Files intentionally generated
+          # by npm or the build remain governed by the repository .gitignore.
+          rm -rf "${dashboard_dir}/node_modules"
+
+          {
+            echo "exit_code=${exit_code}"
+            echo "log_file=${relative_log_file}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo
+            echo "## Dashboard build"
+            echo
+            echo "- Log: \`${relative_log_file}\`"
+            echo "- Exit code: \`${exit_code}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          # Keep this step successful so the generated log can be committed.
+          exit 0
+
+      - name: Commit and push extracted files and build log
+        if: always() && steps.extract.outputs.processed_count != '0'
+        shell: bash
+        env:
+          BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -A
 
+          # Log files are often ignored globally. Force-add this build log so
+          # the diagnostic output is always preserved in the repository.
+          if [[ -n "${BUILD_LOG_FILE}" && -f "${BUILD_LOG_FILE}" ]]; then
+            git add -f -- "${BUILD_LOG_FILE}"
+          fi
+
           if git diff --cached --quiet; then
             echo "No repository changes to commit."
             exit 0
           fi
 
-          git commit -m "chore: extract root ZIP archives [skip ci]"
+          git commit -m "chore: extract ZIP archives and build dashboard [skip ci]"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Fail workflow when dashboard build fails
+        if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_build.outputs.exit_code != '0'
+        shell: bash
+        env:
+          BUILD_EXIT_CODE: ${{ steps.dashboard_build.outputs.exit_code }}
+          BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
+        run: |
+          echo "::error::Dashboard build failed with exit code ${BUILD_EXIT_CODE}. See ${BUILD_LOG_FILE}."
+          exit "${BUILD_EXIT_CODE}"
