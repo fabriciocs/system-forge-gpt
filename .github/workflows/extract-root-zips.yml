@@ -2,11 +2,11 @@ name: Extract root ZIP archives
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - '*.zip'
       - '*.ZIP'
+      - '*.zip.b64.part-*'
   workflow_dispatch:
 
 permissions:
@@ -18,19 +18,42 @@ concurrency:
 
 jobs:
   extract-build-and-commit:
-    name: Extract, build dashboard, and commit
+    name: Extract, validate dashboard, and commit
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Reconstruct encoded ZIP archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import base64
+          from pathlib import Path
+
+          root = Path.cwd()
+          groups = {}
+          for part in sorted(root.glob('*.zip.b64.part-*')):
+              prefix = part.name.split('.part-', 1)[0]
+              groups.setdefault(prefix, []).append(part)
+
+          for prefix, parts in sorted(groups.items()):
+              encoded = b''.join(part.read_bytes() for part in parts)
+              archive = root / prefix.removesuffix('.b64')
+              archive.write_bytes(base64.b64decode(encoded, validate=True))
+              print(f'Reconstructed {archive.name} from {len(parts)} part(s).')
+              for part in parts:
+                  part.unlink()
+          PY
+
       - name: Extract ZIP archives from repository root
         id: extract
         shell: bash
         run: |
+          set -euo pipefail
           python3 <<'PY'
           import os
           import shutil
@@ -40,103 +63,64 @@ jobs:
 
           root = Path.cwd().resolve()
           archives = sorted(
-              path
-              for path in root.iterdir()
-              if path.is_file() and path.suffix.lower() == ".zip"
+              p for p in root.iterdir()
+              if p.is_file() and p.suffix.lower() == '.zip'
           )
-
           if not archives:
-              print("No ZIP archives found in the repository root.")
-              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-                  output.write("processed_count=0\n")
+              print('No ZIP archives found in the repository root.')
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+                  output.write('processed_count=0\n')
               raise SystemExit(0)
 
           processed = []
-
-          with tempfile.TemporaryDirectory(prefix="root-zip-staging-") as staging_dir:
+          with tempfile.TemporaryDirectory(prefix='zip-staging-') as staging_dir:
               staging = Path(staging_dir)
-              staged_archives = []
-
-              # Preserve the original archives before extraction so that an
-              # extracted file cannot alter another archive waiting to run.
+              staged = []
               for index, archive in enumerate(archives):
-                  staged = staging / f"{index:04d}-{archive.name}"
-                  shutil.copy2(archive, staged)
-                  staged_archives.append((archive, staged))
+                  copy = staging / f'{index:04d}-{archive.name}'
+                  shutil.copy2(archive, copy)
+                  staged.append((archive, copy))
 
-              for archive, staged in staged_archives:
-                  print(f"Extracting {archive.name}")
-
-                  with zipfile.ZipFile(staged) as zip_file:
-                      corrupt_member = zip_file.testzip()
-                      if corrupt_member is not None:
-                          raise RuntimeError(
-                              f"Corrupt member '{corrupt_member}' in '{archive.name}'."
-                          )
-
+              for archive, copy in staged:
+                  print(f'Extracting {archive.name}')
+                  with zipfile.ZipFile(copy) as zip_file:
+                      corrupt = zip_file.testzip()
+                      if corrupt is not None:
+                          raise RuntimeError(f"Corrupt member '{corrupt}' in '{archive.name}'.")
                       for member in zip_file.infolist():
-                          normalized_name = member.filename.replace("\\", "/")
-                          member_path = PurePosixPath(normalized_name)
+                          member_path = PurePosixPath(member.filename.replace('\\', '/'))
                           parts = member_path.parts
-
                           if not parts:
                               continue
-
                           if (
                               member_path.is_absolute()
-                              or ".." in parts
-                              or parts[0].endswith(":")
-                              or any(part.lower() == ".git" for part in parts)
+                              or '..' in parts
+                              or parts[0].endswith(':')
+                              or any(part.lower() == '.git' for part in parts)
                           ):
-                              raise RuntimeError(
-                                  f"Unsafe path '{member.filename}' in '{archive.name}'."
-                              )
+                              raise RuntimeError(f"Unsafe path '{member.filename}'.")
 
-                      with tempfile.TemporaryDirectory(
-                          prefix="root-zip-extract-"
-                      ) as extraction_dir:
-                          extraction_root = Path(extraction_dir)
-                          zip_file.extractall(extraction_root)
-
-                          for source in extraction_root.iterdir():
+                      with tempfile.TemporaryDirectory(prefix='zip-extract-') as extract_dir:
+                          extracted = Path(extract_dir)
+                          zip_file.extractall(extracted)
+                          for source in extracted.iterdir():
                               destination = root / source.name
-
                               if source.is_dir():
                                   if destination.exists() and not destination.is_dir():
-                                      raise RuntimeError(
-                                          f"Cannot replace file '{destination}' with a directory."
-                                      )
-                                  shutil.copytree(
-                                      source,
-                                      destination,
-                                      dirs_exist_ok=True,
-                                      copy_function=shutil.copy2,
-                                  )
+                                      raise RuntimeError(f"Cannot replace file '{destination}' with directory.")
+                                  shutil.copytree(source, destination, dirs_exist_ok=True)
                               else:
                                   if destination.exists() and destination.is_dir():
-                                      raise RuntimeError(
-                                          f"Cannot replace directory '{destination}' with a file."
-                                      )
+                                      raise RuntimeError(f"Cannot replace directory '{destination}' with file.")
                                   shutil.copy2(source, destination)
-
                   processed.append(archive.name)
 
-          # Remove every source archive only after all archives were validated
-          # and extracted successfully.
           for archive in archives:
               archive.unlink(missing_ok=True)
 
           print(f"Processed {len(processed)} archive(s): {', '.join(processed)}")
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"processed_count={len(processed)}\n")
-
-          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary_path:
-              with open(summary_path, "a", encoding="utf-8") as summary:
-                  summary.write("## Extracted root ZIP archives\n\n")
-                  for name in processed:
-                      summary.write(f"- `{name}`\n")
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write(f'processed_count={len(processed)}\n')
           PY
 
       - name: Set up Node.js
@@ -145,114 +129,109 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies and build dashboard
-        id: dashboard_build
+      - name: Locate dashboard
+        id: locate
         if: steps.extract.outputs.processed_count != '0'
         shell: bash
         run: |
-          set +e
+          set -euo pipefail
+          dashboard_dir=''
+          if [[ -f "${GITHUB_WORKSPACE}/docs/dashboard/package.json" ]]; then
+            dashboard_dir="${GITHUB_WORKSPACE}/docs/dashboard"
+          else
+            dashboard_dir="$(find "${GITHUB_WORKSPACE}" -mindepth 3 -maxdepth 4 -type f -path '*/docs/dashboard/package.json' -printf '%h\n' | sort | head -n 1)"
+          fi
+          if [[ -z "${dashboard_dir}" ]]; then
+            echo 'Dashboard package.json was not found.' >&2
+            exit 1
+          fi
+          relative_dir="${dashboard_dir#${GITHUB_WORKSPACE}/}"
+          echo "dashboard_dir=${dashboard_dir}" >> "${GITHUB_OUTPUT}"
+          echo "relative_dir=${relative_dir}" >> "${GITHUB_OUTPUT}"
+          echo "Dashboard located at ${relative_dir}."
 
-          dashboard_dir="${GITHUB_WORKSPACE}/docs/dashboard"
-          timestamp="$(date -u +'%Y%m%d%H%M%Sz')"
-          relative_log_file="docs/dashboard/logs/${timestamp}.log"
+      - name: Install dependencies, typecheck, and build dashboard
+        id: dashboard_build
+        if: steps.extract.outputs.processed_count != '0'
+        shell: bash
+        env:
+          DASHBOARD_DIR: ${{ steps.locate.outputs.dashboard_dir }}
+          DASHBOARD_RELATIVE_DIR: ${{ steps.locate.outputs.relative_dir }}
+        run: |
+          set +e
+          timestamp="$(date -u +'%Y%m%dT%H%M%SZ')"
+          relative_log_file="${DASHBOARD_RELATIVE_DIR}/logs/${timestamp}.log"
           log_file="${GITHUB_WORKSPACE}/${relative_log_file}"
           exit_code=0
-
           mkdir -p "$(dirname "${log_file}")"
 
           {
-            echo "Dashboard build log"
+            echo 'Dashboard validation log'
             echo "UTC timestamp: ${timestamp}"
             echo "Repository: ${GITHUB_REPOSITORY}"
             echo "Commit: ${GITHUB_SHA}"
+            echo "Dashboard: ${DASHBOARD_RELATIVE_DIR}"
             echo "Node: $(node --version 2>&1)"
             echo "npm: $(npm --version 2>&1)"
             echo
           } | tee "${log_file}"
 
-          if [[ ! -d "${dashboard_dir}" ]]; then
-            echo "ERROR: Directory docs/dashboard was not found after ZIP extraction." \
-              | tee -a "${log_file}"
-            exit_code=1
-          elif [[ ! -f "${dashboard_dir}/package.json" ]]; then
-            echo "ERROR: File docs/dashboard/package.json was not found." \
-              | tee -a "${log_file}"
-            exit_code=1
-          else
-            cd "${dashboard_dir}"
+          cd "${DASHBOARD_DIR}"
 
-            echo "===== npm install --verbose =====" | tee -a "${log_file}"
-            npm install --verbose 2>&1 | tee -a "${log_file}"
-            install_exit_code=${PIPESTATUS[0]}
-            echo "npm install exit code: ${install_exit_code}" | tee -a "${log_file}"
+          echo '===== npm install --verbose =====' | tee -a "${log_file}"
+          npm install --verbose 2>&1 | tee -a "${log_file}"
+          install_code=${PIPESTATUS[0]}
+          echo "npm install exit code: ${install_code}" | tee -a "${log_file}"
+          if [[ ${install_code} -ne 0 ]]; then exit_code=${install_code}; fi
 
-            if [[ ${install_exit_code} -ne 0 ]]; then
-              exit_code=${install_exit_code}
-            fi
+          echo | tee -a "${log_file}"
+          echo '===== npm run typecheck =====' | tee -a "${log_file}"
+          npm run typecheck 2>&1 | tee -a "${log_file}"
+          typecheck_code=${PIPESTATUS[0]}
+          echo "npm run typecheck exit code: ${typecheck_code}" | tee -a "${log_file}"
+          if [[ ${typecheck_code} -ne 0 && ${exit_code} -eq 0 ]]; then exit_code=${typecheck_code}; fi
 
-            echo | tee -a "${log_file}"
-            echo "===== npm run build =====" | tee -a "${log_file}"
-            npm run build 2>&1 | tee -a "${log_file}"
-            build_exit_code=${PIPESTATUS[0]}
-            echo "npm run build exit code: ${build_exit_code}" | tee -a "${log_file}"
+          echo | tee -a "${log_file}"
+          echo '===== npm run build =====' | tee -a "${log_file}"
+          npm run build 2>&1 | tee -a "${log_file}"
+          build_code=${PIPESTATUS[0]}
+          echo "npm run build exit code: ${build_code}" | tee -a "${log_file}"
+          if [[ ${build_code} -ne 0 && ${exit_code} -eq 0 ]]; then exit_code=${build_code}; fi
 
-            if [[ ${build_exit_code} -ne 0 && ${exit_code} -eq 0 ]]; then
-              exit_code=${build_exit_code}
-            fi
-          fi
-
-          # Never commit installed dependencies. Files intentionally generated
-          # by npm or the build remain governed by the repository .gitignore.
-          rm -rf "${dashboard_dir}/node_modules"
-
+          rm -rf "${DASHBOARD_DIR}/node_modules"
           {
             echo "exit_code=${exit_code}"
             echo "log_file=${relative_log_file}"
           } >> "${GITHUB_OUTPUT}"
-
-          {
-            echo
-            echo "## Dashboard build"
-            echo
-            echo "- Log: \`${relative_log_file}\`"
-            echo "- Exit code: \`${exit_code}\`"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-          # Keep this step successful so the generated log can be committed.
           exit 0
 
-      - name: Commit and push extracted files and build log
+      - name: Commit and push extracted files and validation log
         if: always() && steps.extract.outputs.processed_count != '0'
         shell: bash
         env:
           BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-
-          # Log files are often ignored globally. Force-add this build log so
-          # the diagnostic output is always preserved in the repository.
           if [[ -n "${BUILD_LOG_FILE}" && -f "${BUILD_LOG_FILE}" ]]; then
             git add -f -- "${BUILD_LOG_FILE}"
           fi
-
           if git diff --cached --quiet; then
-            echo "No repository changes to commit."
+            echo 'No repository changes to commit.'
             exit 0
           fi
-
-          git commit -m "chore: extract ZIP archives and build dashboard [skip ci]"
+          git commit -m 'chore: extract system package and validate dashboard [skip ci]'
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
-      - name: Fail workflow when dashboard build fails
+      - name: Fail workflow when dashboard validation fails
         if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_build.outputs.exit_code != '' && steps.dashboard_build.outputs.exit_code != '0'
         shell: bash
         env:
           BUILD_EXIT_CODE: ${{ steps.dashboard_build.outputs.exit_code }}
           BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
         run: |
-          echo "::error::Dashboard build failed with exit code ${BUILD_EXIT_CODE}. See ${BUILD_LOG_FILE}."
+          echo "::error::Dashboard validation failed with exit code ${BUILD_EXIT_CODE}. See ${BUILD_LOG_FILE}."
           exit "${BUILD_EXIT_CODE}"
