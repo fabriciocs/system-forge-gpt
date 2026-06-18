@@ -1,0 +1,33 @@
+{
+  "name": "system-forge-documentation-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false",
+    "preview": "vite preview",
+    "validate:content": "node scripts/validate-content.mjs",
+    "capture": "node scripts/capture-all-pages.mjs",
+    "audit:a11y": "node scripts/audit-accessibility.mjs"
+  },
+  "dependencies": {
+    "@emotion/react": "11.14.0",
+    "@emotion/styled": "11.14.1",
+    "@mui/icons-material": "7.3.5",
+    "@mui/material": "7.3.5",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-router-dom": "^7.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.1",
+    "playwright": "1.56.1",
+    "typescript": "5.9.3",
+    "vite": "7.2.4"
+  }
+}
