@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   extract-build-and-commit:
-    name: Extract, build dashboard, and commit
+    name: Extract, build dashboards, and commit
     runs-on: ubuntu-latest
 
     steps:
@@ -27,18 +27,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract ZIP archives from repository root
+      - name: Extract each ZIP into its own root folder
         id: extract
         shell: bash
         run: |
           python3 <<'PY'
           import os
           import shutil
+          import stat
           import tempfile
           import zipfile
           from pathlib import Path, PurePosixPath
 
           root = Path.cwd().resolve()
+          roots_file = Path(os.environ["RUNNER_TEMP"]) / "extracted-root-directories.txt"
           archives = sorted(
               path
               for path in root.iterdir()
@@ -46,26 +48,47 @@ jobs:
           )
 
           if not archives:
+              roots_file.write_text("", encoding="utf-8")
               print("No ZIP archives found in the repository root.")
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                   output.write("processed_count=0\n")
+                  output.write(f"roots_file={roots_file}\n")
               raise SystemExit(0)
 
           processed = []
+          extracted_roots = []
 
           with tempfile.TemporaryDirectory(prefix="root-zip-staging-") as staging_dir:
               staging = Path(staging_dir)
               staged_archives = []
 
-              # Preserve the original archives before extraction so that an
-              # extracted file cannot alter another archive waiting to run.
+              # Preserve all source archives before extraction so an extracted
+              # file can never alter another archive waiting to be processed.
               for index, archive in enumerate(archives):
                   staged = staging / f"{index:04d}-{archive.name}"
                   shutil.copy2(archive, staged)
                   staged_archives.append((archive, staged))
 
               for archive, staged in staged_archives:
-                  print(f"Extracting {archive.name}")
+                  folder_name = archive.stem
+
+                  if (
+                      not folder_name
+                      or folder_name in {".", ".."}
+                      or folder_name.lower() in {".git", ".github"}
+                      or any(ord(character) < 32 for character in folder_name)
+                  ):
+                      raise RuntimeError(
+                          f"Archive '{archive.name}' cannot be mapped to a safe root folder."
+                      )
+
+                  destination_root = root / folder_name
+                  if destination_root.exists() and not destination_root.is_dir():
+                      raise RuntimeError(
+                          f"Cannot create folder '{folder_name}': a file already exists there."
+                      )
+
+                  print(f"Extracting {archive.name} into {folder_name}/")
 
                   with zipfile.ZipFile(staged) as zip_file:
                       corrupt_member = zip_file.testzip()
@@ -78,6 +101,7 @@ jobs:
                           normalized_name = member.filename.replace("\\", "/")
                           member_path = PurePosixPath(normalized_name)
                           parts = member_path.parts
+                          unix_mode = member.external_attr >> 16
 
                           if not parts:
                               continue
@@ -87,6 +111,7 @@ jobs:
                               or ".." in parts
                               or parts[0].endswith(":")
                               or any(part.lower() == ".git" for part in parts)
+                              or stat.S_ISLNK(unix_mode)
                           ):
                               raise RuntimeError(
                                   f"Unsafe path '{member.filename}' in '{archive.name}'."
@@ -97,46 +122,40 @@ jobs:
                       ) as extraction_dir:
                           extraction_root = Path(extraction_dir)
                           zip_file.extractall(extraction_root)
+                          destination_root.mkdir(parents=False, exist_ok=True)
+                          shutil.copytree(
+                              extraction_root,
+                              destination_root,
+                              dirs_exist_ok=True,
+                              copy_function=shutil.copy2,
+                          )
 
-                          for source in extraction_root.iterdir():
-                              destination = root / source.name
+                  processed.append((archive.name, folder_name))
+                  if folder_name not in extracted_roots:
+                      extracted_roots.append(folder_name)
 
-                              if source.is_dir():
-                                  if destination.exists() and not destination.is_dir():
-                                      raise RuntimeError(
-                                          f"Cannot replace file '{destination}' with a directory."
-                                      )
-                                  shutil.copytree(
-                                      source,
-                                      destination,
-                                      dirs_exist_ok=True,
-                                      copy_function=shutil.copy2,
-                                  )
-                              else:
-                                  if destination.exists() and destination.is_dir():
-                                      raise RuntimeError(
-                                          f"Cannot replace directory '{destination}' with a file."
-                                      )
-                                  shutil.copy2(source, destination)
-
-                  processed.append(archive.name)
-
-          # Remove every source archive only after all archives were validated
+          # Delete source archives only after every archive has been validated
           # and extracted successfully.
           for archive in archives:
               archive.unlink(missing_ok=True)
 
-          print(f"Processed {len(processed)} archive(s): {', '.join(processed)}")
+          roots_file.write_text(
+              "".join(f"{folder_name}\n" for folder_name in extracted_roots),
+              encoding="utf-8",
+          )
+
+          print(f"Processed {len(processed)} archive(s).")
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"processed_count={len(processed)}\n")
+              output.write(f"roots_file={roots_file}\n")
 
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
               with open(summary_path, "a", encoding="utf-8") as summary:
                   summary.write("## Extracted root ZIP archives\n\n")
-                  for name in processed:
-                      summary.write(f"- `{name}`\n")
+                  for archive_name, folder_name in processed:
+                      summary.write(f"- `{archive_name}` → `/{folder_name}/`\n")
           PY
 
       - name: Set up Node.js
@@ -145,97 +164,121 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install dependencies and build dashboard
+      - name: Install dependencies and build extracted dashboards
         id: dashboard_build
         if: steps.extract.outputs.processed_count != '0'
         shell: bash
+        env:
+          EXTRACTED_ROOTS_FILE: ${{ steps.extract.outputs.roots_file }}
         run: |
           set +e
 
-          dashboard_dir="${GITHUB_WORKSPACE}/docs/dashboard"
-          timestamp="$(date -u +'%Y%m%d%H%M%Sz')"
-          relative_log_file="docs/dashboard/logs/${timestamp}.log"
-          log_file="${GITHUB_WORKSPACE}/${relative_log_file}"
-          exit_code=0
+          overall_exit_code=0
+          logs_file="${RUNNER_TEMP}/dashboard-build-logs.txt"
+          : > "${logs_file}"
 
-          mkdir -p "$(dirname "${log_file}")"
+          while IFS= read -r project_root_relative || [[ -n "${project_root_relative}" ]]; do
+            [[ -z "${project_root_relative}" ]] && continue
 
-          {
-            echo "Dashboard build log"
-            echo "UTC timestamp: ${timestamp}"
-            echo "Repository: ${GITHUB_REPOSITORY}"
-            echo "Commit: ${GITHUB_SHA}"
-            echo "Node: $(node --version 2>&1)"
-            echo "npm: $(npm --version 2>&1)"
-            echo
-          } | tee "${log_file}"
+            project_root="${GITHUB_WORKSPACE}/${project_root_relative}"
+            dashboard_dir="${project_root}/docs/dashboard"
+            timestamp="$(date -u +'%Y%m%d%H%M%S')z"
+            relative_log_file="${project_root_relative}/docs/dashboard/logs/${timestamp}.log"
+            log_file="${GITHUB_WORKSPACE}/${relative_log_file}"
+            project_exit_code=0
 
-          if [[ ! -d "${dashboard_dir}" ]]; then
-            echo "ERROR: Directory docs/dashboard was not found after ZIP extraction." \
-              | tee -a "${log_file}"
-            exit_code=1
-          elif [[ ! -f "${dashboard_dir}/package.json" ]]; then
-            echo "ERROR: File docs/dashboard/package.json was not found." \
-              | tee -a "${log_file}"
-            exit_code=1
-          else
-            cd "${dashboard_dir}"
+            mkdir -p "$(dirname "${log_file}")"
 
-            echo "===== npm install --verbose =====" | tee -a "${log_file}"
-            npm install --verbose 2>&1 | tee -a "${log_file}"
-            install_exit_code=${PIPESTATUS[0]}
-            echo "npm install exit code: ${install_exit_code}" | tee -a "${log_file}"
+            {
+              echo "Dashboard build log"
+              echo "UTC timestamp: ${timestamp}"
+              echo "Extracted root: ${project_root_relative}"
+              echo "Dashboard: ${project_root_relative}/docs/dashboard"
+              echo "Repository: ${GITHUB_REPOSITORY}"
+              echo "Commit: ${GITHUB_SHA}"
+              echo "Node: $(node --version 2>&1)"
+              echo "npm: $(npm --version 2>&1)"
+              echo
+            } | tee "${log_file}"
 
-            if [[ ${install_exit_code} -ne 0 ]]; then
-              exit_code=${install_exit_code}
+            if [[ ! -d "${dashboard_dir}" ]]; then
+              echo "ERROR: Directory ${project_root_relative}/docs/dashboard was not found." \
+                | tee -a "${log_file}"
+              project_exit_code=1
+            elif [[ ! -f "${dashboard_dir}/package.json" ]]; then
+              echo "ERROR: File ${project_root_relative}/docs/dashboard/package.json was not found." \
+                | tee -a "${log_file}"
+              project_exit_code=1
+            else
+              pushd "${dashboard_dir}" > /dev/null
+
+              echo "===== npm install --verbose =====" | tee -a "${log_file}"
+              npm install --verbose 2>&1 | tee -a "${log_file}"
+              install_exit_code=${PIPESTATUS[0]}
+              echo "npm install exit code: ${install_exit_code}" | tee -a "${log_file}"
+
+              if [[ ${install_exit_code} -ne 0 ]]; then
+                project_exit_code=${install_exit_code}
+              fi
+
+              echo | tee -a "${log_file}"
+              echo "===== npm run build =====" | tee -a "${log_file}"
+              npm run build 2>&1 | tee -a "${log_file}"
+              build_exit_code=${PIPESTATUS[0]}
+              echo "npm run build exit code: ${build_exit_code}" | tee -a "${log_file}"
+
+              if [[ ${build_exit_code} -ne 0 && ${project_exit_code} -eq 0 ]]; then
+                project_exit_code=${build_exit_code}
+              fi
+
+              popd > /dev/null
             fi
 
-            echo | tee -a "${log_file}"
-            echo "===== npm run build =====" | tee -a "${log_file}"
-            npm run build 2>&1 | tee -a "${log_file}"
-            build_exit_code=${PIPESTATUS[0]}
-            echo "npm run build exit code: ${build_exit_code}" | tee -a "${log_file}"
+            # Installed dependencies must never be committed.
+            rm -rf "${dashboard_dir}/node_modules"
 
-            if [[ ${build_exit_code} -ne 0 && ${exit_code} -eq 0 ]]; then
-              exit_code=${build_exit_code}
+            printf '%s\n' "${relative_log_file}" >> "${logs_file}"
+
+            {
+              echo
+              echo "## Dashboard build: ${project_root_relative}"
+              echo
+              echo "- Dashboard: \`${project_root_relative}/docs/dashboard\`"
+              echo "- Log: \`${relative_log_file}\`"
+              echo "- Exit code: \`${project_exit_code}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+
+            if [[ ${project_exit_code} -ne 0 && ${overall_exit_code} -eq 0 ]]; then
+              overall_exit_code=${project_exit_code}
             fi
-          fi
-
-          # Never commit installed dependencies. Files intentionally generated
-          # by npm or the build remain governed by the repository .gitignore.
-          rm -rf "${dashboard_dir}/node_modules"
+          done < "${EXTRACTED_ROOTS_FILE}"
 
           {
-            echo "exit_code=${exit_code}"
-            echo "log_file=${relative_log_file}"
+            echo "exit_code=${overall_exit_code}"
+            echo "logs_file=${logs_file}"
           } >> "${GITHUB_OUTPUT}"
 
-          {
-            echo
-            echo "## Dashboard build"
-            echo
-            echo "- Log: \`${relative_log_file}\`"
-            echo "- Exit code: \`${exit_code}\`"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-          # Keep this step successful so the generated log can be committed.
+          # Keep this step successful so extracted files and logs can be pushed.
           exit 0
 
-      - name: Commit and push extracted files and build log
+      - name: Commit and push extracted folders and build logs
         if: always() && steps.extract.outputs.processed_count != '0'
         shell: bash
         env:
-          BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
+          BUILD_LOGS_FILE: ${{ steps.dashboard_build.outputs.logs_file }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add -A
 
-          # Log files are often ignored globally. Force-add this build log so
-          # the diagnostic output is always preserved in the repository.
-          if [[ -n "${BUILD_LOG_FILE}" && -f "${BUILD_LOG_FILE}" ]]; then
-            git add -f -- "${BUILD_LOG_FILE}"
+          # Logs are ignored globally. Force-add only the logs generated by this run.
+          if [[ -n "${BUILD_LOGS_FILE}" && -f "${BUILD_LOGS_FILE}" ]]; then
+            while IFS= read -r build_log || [[ -n "${build_log}" ]]; do
+              if [[ -n "${build_log}" && -f "${GITHUB_WORKSPACE}/${build_log}" ]]; then
+                git add -f -- "${build_log}"
+              fi
+            done < "${BUILD_LOGS_FILE}"
           fi
 
           if git diff --cached --quiet; then
@@ -243,16 +286,22 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore: extract ZIP archives and build dashboard [skip ci]"
+          git commit -m "chore: extract ZIP folders and build dashboards [skip ci]"
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
-      - name: Fail workflow when dashboard build fails
+      - name: Fail workflow when a dashboard build fails
         if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_build.outputs.exit_code != '' && steps.dashboard_build.outputs.exit_code != '0'
         shell: bash
         env:
           BUILD_EXIT_CODE: ${{ steps.dashboard_build.outputs.exit_code }}
-          BUILD_LOG_FILE: ${{ steps.dashboard_build.outputs.log_file }}
+          BUILD_LOGS_FILE: ${{ steps.dashboard_build.outputs.logs_file }}
         run: |
-          echo "::error::Dashboard build failed with exit code ${BUILD_EXIT_CODE}. See ${BUILD_LOG_FILE}."
+          echo "::error::One or more dashboard builds failed with exit code ${BUILD_EXIT_CODE}."
+
+          if [[ -n "${BUILD_LOGS_FILE}" && -f "${BUILD_LOGS_FILE}" ]]; then
+            echo "Generated build logs:"
+            sed 's/^/- /' "${BUILD_LOGS_FILE}"
+          fi
+
           exit "${BUILD_EXIT_CODE}"
