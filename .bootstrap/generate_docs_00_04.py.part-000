@@ -1,0 +1,345 @@
+from __future__ import annotations
+import json, uuid, hashlib, re, textwrap
+from pathlib import Path
+from datetime import datetime, timezone
+from xml.etree import ElementTree as ET
+from PIL import Image, ImageDraw, ImageFont
+
+ROOT = Path.cwd() / '64BD1EFD'
+DOCS = ROOT / 'docs'
+THEME = DOCS / 'theme'
+VI = DOCS / 'visual-identity'
+for p in (DOCS, THEME, VI):
+    p.mkdir(parents=True, exist_ok=True)
+
+idea_path = ROOT / 'ideia-inicial.md'
+idea = idea_path.read_text(encoding='utf-8')
+now = datetime.now(timezone.utc).replace(microsecond=0)
+created_at = now.isoformat().replace('+00:00','Z')
+system_id = hashlib.sha256(idea.encode('utf-8')).hexdigest()[:8].upper()
+session_id = str(uuid.uuid4())
+project_name = 'System Forge Enterprise'
+
+meta = {
+    'system_id': system_id,
+    'session_id': session_id,
+    'created_at': created_at,
+    'source': './ideia-inicial.md',
+    'source_sha256': hashlib.sha256(idea.encode('utf-8')).hexdigest(),
+    'provisional_name': project_name,
+    'language': 'pt-BR',
+    'stage': '00',
+    'status': 'validated'
+}
+(DOCS / '00.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
+
+# ---------- Stage 00 ----------
+md00 = f'''# 00 — Fundação inicial do produto
+
+## Metadados de rastreabilidade
+
+| Campo | Valor |
+|---|---|
+| System ID | `{system_id}` |
+| Session ID | `{session_id}` |
+| Criado em | `{created_at}` |
+| Fonte primária | `./ideia-inicial.md` |
+| SHA-256 da fonte | `{meta['source_sha256']}` |
+| Nome provisório | **{project_name}** |
+| Categoria | SaaS B2B enterprise, AI product factory e workflow documental |
+| Idioma-base | pt-BR |
+
+## Ideia inicial preservada integralmente
+
+> O conteúdo entre os marcadores abaixo é uma cópia integral da fonte primária. Nenhuma correção, síntese ou reinterpretação foi aplicada.
+
+<!-- ORIGINAL_IDEA_START -->
+
+{idea}
+
+<!-- ORIGINAL_IDEA_END -->
+
+## Enquadramento visual inicial
+
+### Fatos extraídos da fonte
+
+A fonte descreve uma plataforma SaaS B2B multi-tenant para transformar ideias em projetos estruturados por etapas, combinando IA configurável, documentos versionados, governança, billing, segurança, LGPD e especialistas humanos. O Superadministrador opera o control plane global; tenants e projetos operam em planos contextuais distintos.
+
+### Inferências de marca
+
+As seguintes decisões são inferências de design, não requisitos funcionais: a marca deve comunicar precisão, progressão, auditabilidade, potência controlada e confiança enterprise; a metáfora central é uma forja digital na qual matéria-prima pouco estruturada se transforma em artefatos verificáveis; o produto deve evitar estética de “chat genérico” e privilegiar uma linguagem editorial-operacional.
+
+### Alternativas consideradas
+
+1. **Dark Forge + Editorial Console** — superfícies grafite, acentos ciano e âmbar, tipografia técnica e hierarquia editorial. Melhor alinhamento com governança, IA e rastreabilidade.
+2. **Blueprint Laboratory** — base clara azulada, grids de engenharia e linhas finas. Forte para documentação, porém menos distintiva.
+3. **Neutral Enterprise Studio** — cinzas claros, azul institucional e componentes convencionais. Alta familiaridade, porém menor diferenciação.
+
+### Direção selecionada
+
+**Dark Forge + Editorial Console**, por equilibrar autoridade enterprise, legibilidade documental e sensação de transformação progressiva. A aplicação deve oferecer tema claro e escuro equivalentes, preservando contraste, foco, densidade e leitura prolongada.
+
+## Identidade visual
+
+### Posicionamento
+
+“Da ideia ao sistema governado.” A marca representa uma infraestrutura de transformação assistida, não um gerador instantâneo sem controle.
+
+### Personalidade
+
+Precisa, sóbria, técnica, progressiva, transparente, auditável e humana. Evitar tom mágico, infantil, excessivamente futurista ou baseado em gradientes ornamentais.
+
+### Logotipo
+
+O símbolo combina três elementos: um hexágono como estrutura e governança; uma trilha ascendente como timeline; um núcleo luminoso como inteligência assistiva. A palavra “System Forge” usa peso semibold e espaçamento moderado. O símbolo deve funcionar isoladamente em 16 px ou mais.
+
+### Paleta
+
+| Papel | Claro | Escuro | Uso |
+|---|---:|---:|---|
+| Primary | `#005B96` | `#62B5F5` | ações principais, links, foco |
+| Secondary | `#006C67` | `#5FD6CE` | estados informativos e colaboração |
+| Tertiary | `#8B4A00` | `#FFB86A` | progresso, atenção e energia da “forja” |
+| Surface | `#F7F9FC` | `#0C1117` | plano de fundo |
+| Surface container | `#FFFFFF` | `#151C24` | cards, painéis e drawers |
+| Error | `#BA1A1A` | `#FFB4AB` | falhas e bloqueios |
+| Success | `#176B3A` | `#77DA95` | conclusão e aprovação |
+
+### Tipografia
+
+Família principal: `Inter`, com fallback `Segoe UI`, `Roboto`, `Arial`, sans-serif. Família monoespaçada: `JetBrains Mono`, `Cascadia Code`, `Consolas`, monospace. Escala baseada em Material Design 3, com corpos de 14–16 px e títulos de 20–40 px. Documentos extensos usam largura de leitura entre 68 e 84 caracteres.
+
+### Formas, elevação e iconografia
+
+Raios de 8, 12, 16 e 24 px; contornos discretos; elevação baixa e progressiva; ícones lineares arredondados de 20–24 px; chips compactos para estado, escopo e evidência. Elementos de IA nunca devem ocultar origem, custo, estado ou ação humana disponível.
+
+### Motion
+
+Durações de 120, 180, 240 e 320 ms. Transições de navegação usam deslocamento máximo de 12 px e opacidade. Respeitar `prefers-reduced-motion`; nesse modo, remover movimentos espaciais e manter apenas mudança instantânea ou fade curto.
+
+### Acessibilidade
+
+Contraste mínimo WCAG AA; foco visível de 2 px com offset; navegação completa por teclado; alvos mínimos de 44×44 px; sem dependência exclusiva de cor; textos alternativos; landmarks semânticos; mensagens de estado anunciadas por regiões `aria-live`; tabelas com cabeçalhos associados.
+
+## Tokens e temas
+
+Os tokens oficiais estão em `./docs/theme/tokens.angular.json`; as variáveis CSS em `./docs/theme/web.css`; e o tema React/Material UI em `./docs/theme/theme.tsx`. Os tokens são organizados em primitivos, semânticos e componentes, com aliases claros para tema claro e escuro.
+
+## Assets gerados
+
+Os assets em `./docs/visual-identity/` incluem logotipo horizontal, símbolo, versões monocromáticas, favicon, ícones Android, iOS e PWA, imagens sociais e splash screens claro/escuro. O arquivo `brand-guidelines.md` documenta uso, área de proteção, tamanhos mínimos e restrições.
+
+## Critérios de aceite e validação da etapa
+
+- Ideia original preservada entre marcadores e validada por hash.
+- Metadados JSON parseados com sucesso.
+- Tokens JSON parseados com sucesso.
+- CSS inspecionado quanto a blocos e variáveis essenciais.
+- Tema TSX inspecionado estruturalmente, sem placeholders.
+- SVGs validados como XML bem-formado.
+- Imagens raster abertas e dimensões conferidas.
+- Nenhuma especificação funcional detalhada, DER, arquitetura física ou backlog foi criada nesta etapa.
+
+## Riscos, lacunas e limitações
+
+A nomenclatura provisória depende de validação jurídica e pesquisa de marca. Fontes proprietárias não foram incorporadas; os fallbacks do sistema garantem funcionamento. A compilação do tema TSX fica para o projeto React da etapa 06, conforme regra da etapa 00.
+'''
+(DOCS / '00.md').write_text(md00, encoding='utf-8')
+
+core = '''# Core conceitual — System Forge Enterprise
+
+## Propósito
+
+O core define os princípios de interação e organização comuns às futuras superfícies do produto, sem fixar arquitetura física ou requisitos detalhados.
+
+## Contextos operacionais
+
+- **Global:** governança do SaaS e visão transversal.
+- **Tenant:** administração contextualizada de uma organização cliente.
+- **Projeto:** execução orientada a timeline, documentos e decisões.
+- **Especialista:** colaboração humana contratada e rastreável.
+
+## App shell conceitual
+
+O shell combina barra superior com identidade, busca e alternador de contexto; navegação lateral adaptativa; área principal com breadcrumbs e cabeçalho contextual; painel auxiliar para sumário, evidências e metadados; e navegação inferior em dispositivos compactos. O contexto ativo deve permanecer visível em todas as páginas.
+
+## Princípios de navegação
+
+1. Contexto antes da ação.
+2. Estado antes da promessa.
+3. Evidência próxima da decisão.
+4. Histórico sempre acessível.
+5. Ações destrutivas reversíveis por soft delete.
+6. Conteúdo longo com sumário, âncoras e leitura focada.
+7. IA apresentada como processo auditável, não como caixa-preta.
+
+## Estados globais de UI
+
+`loading`, `skeleton`, `empty`, `error`, `blocked`, `no-permission`, `read-only`, `processing-ai`, `success`, `offline` e `maintenance`. Cada estado deve trazer explicação, próxima ação possível e referência contextual.
+
+## Densidade e responsividade
+
+Mobile primeiro. Em 0–599 px, uma coluna e bottom navigation; 600–1023 px, drawer temporário ou rail; 1024 px ou mais, rail/drawer persistente e painel auxiliar opcional. Conteúdo documental pode alternar entre modo leitura, modo inspeção e modo comparação.
+
+## Governança visual
+
+Componentes devem usar tokens semânticos, nunca valores arbitrários. Estados críticos exigem iconografia, texto e cor. Escopos devem ser representados de forma consistente por chips e breadcrumbs. Toda ação de IA deve mostrar status, versão, custo estimado quando disponível e origem do contexto.
+'''
+(DOCS / 'core.md').write_text(core, encoding='utf-8')
+
+design = '''# Design specification — Google Stitch e implementação futura
+
+## Direção
+
+Aplicação administrativa mobile-first, minimalista e densa na medida certa, baseada em Material Design 3. A linguagem “Dark Forge + Editorial Console” combina superfícies técnicas, títulos editoriais, linhas de progresso e acentos funcionais.
+
+## Layouts de referência
+
+- Mobile: 390×844, margens 16 px, uma coluna, bottom navigation.
+- Tablet: 768×1024, margens 24 px, rail opcional e painéis empilháveis.
+- Desktop: 1440×1024, drawer 280 px, conteúdo máximo 1180 px, painel contextual 320 px opcional.
+
+## Componentes estruturais
+
+AppBar, NavigationDrawer, NavigationRail, BottomNavigation, ContextSwitcher, Breadcrumbs, PageHeader, StageTimeline, StageCard, EvidenceChip, ScopeChip, StatusBadge, DocumentReader, SectionToc, SearchCommand, DataTable, MatrixTable, MermaidPanel, CodePanel, JsonViewer, SvgPreview, RiskCard, DecisionCard, AcceptanceChecklist, StatePanel e AuditTrail.
+
+## Regras de composição
+
+Cards não devem competir com o conteúdo; documentação extensa usa superfícies planas e divisores. KPIs usam números tabulares e rótulos curtos. Matrizes devem permitir rolagem horizontal com primeira coluna fixa em telas estreitas. Diagramas possuem zoom, legenda e fallback textual.
+
+## Estados
+
+Todos os componentes interativos devem especificar: default, hover, focus-visible, active, disabled, loading e error. Conteúdos protegidos incluem blocked, no-permission e read-only. A IA inclui processing, retrying, validating e completed.
+
+## Motion
+
+Entrada de páginas: fade de 180 ms; expansão: 240 ms; hover: 120 ms; troca de tema: 180 ms. Em movimento reduzido, usar duração efetiva de 1 ms para deslocamentos e manter foco estável.
+
+## Acessibilidade
+
+WCAG 2.2 AA, foco persistente, ordem de tabulação lógica, landmarks, labels explícitos, descrições para diagramas e suporte a zoom de 200%. Não usar texto abaixo de 12 px.
+
+## Prompt-base para Stitch
+
+Crie uma aplicação administrativa React com Material Design 3, mobile-first, para uma plataforma SaaS B2B de criação de sistemas com IA. Use tema claro e escuro, navegação adaptativa, títulos editoriais, superfícies grafite no escuro, azul profundo como primary, teal como secondary e âmbar como tertiary. Priorize legibilidade documental, timeline de etapas, evidências, auditoria, estados completos e rastreabilidade. Evite estética genérica de chatbot, gradientes decorativos e cards excessivos.
+'''
+(DOCS / 'design.md').write_text(design, encoding='utf-8')
+
+# Tokens
+tokens = {
+  '$schema': 'https://schemas.system-forge.local/design-tokens/v1.json',
+  'meta': {'name': project_name, 'version': '1.0.0', 'generatedAt': created_at},
+  'primitive': {
+    'color': {
+      'blue': {'10':'#001D35','20':'#003257','30':'#004A78','40':'#005B96','80':'#9CCBFF','90':'#D0E4FF'},
+      'teal': {'20':'#003735','40':'#006C67','80':'#5FD6CE','90':'#80F3EA'},
+      'amber': {'30':'#663300','40':'#8B4A00','80':'#FFB86A','90':'#FFDCC2'},
+      'neutral': {'0':'#000000','4':'#0C1117','8':'#151C24','12':'#1D2630','20':'#303944','90':'#E0E5EC','96':'#F1F4F8','98':'#F7F9FC','100':'#FFFFFF'},
+      'red': {'40':'#BA1A1A','80':'#FFB4AB'},
+      'green': {'40':'#176B3A','80':'#77DA95'}
+    },
+    'space': {'0':0,'1':4,'2':8,'3':12,'4':16,'5':20,'6':24,'8':32,'10':40,'12':48,'16':64},
+    'radius': {'sm':8,'md':12,'lg':16,'xl':24,'full':999},
+    'duration': {'fast':120,'short':180,'medium':240,'long':320}
+  },
+  'semantic': {
+    'light': {
+      'primary':'{primitive.color.blue.40}','onPrimary':'{primitive.color.neutral.100}','secondary':'{primitive.color.teal.40}','tertiary':'{primitive.color.amber.40}',
+      'background':'{primitive.color.neutral.98}','surface':'{primitive.color.neutral.100}','surfaceVariant':'{primitive.color.neutral.96}','onSurface':'#18202A','outline':'#707984','error':'{primitive.color.red.40}','success':'{primitive.color.green.40}'
+    },
+    'dark': {
+      'primary':'#62B5F5','onPrimary':'#003154','secondary':'{primitive.color.teal.80}','tertiary':'{primitive.color.amber.80}',
+      'background':'{primitive.color.neutral.4}','surface':'{primitive.color.neutral.8}','surfaceVariant':'{primitive.color.neutral.12}','onSurface':'#E3E8EF','outline':'#89929D','error':'{primitive.color.red.80}','success':'{primitive.color.green.80}'
+    }
+  },
+  'component': {
+    'appBar': {'heightMobile':64,'heightDesktop':72},
+    'drawer': {'width':280,'railWidth':80},
+    'button': {'height':44,'radius':'{primitive.radius.full}'},
+    'card': {'radius':'{primitive.radius.lg}','padding':'{primitive.space.5}'},
+    'focusRing': {'width':2,'offset':2}
+  }
+}
+(THEME / 'tokens.angular.json').write_text(json.dumps(tokens, ensure_ascii=False, indent=2), encoding='utf-8')
+
+webcss = '''/* System Forge Enterprise design tokens */
+:root {
+  color-scheme: light dark;
+  --sf-primary: #005b96; --sf-on-primary: #ffffff; --sf-secondary: #006c67; --sf-tertiary: #8b4a00;
+  --sf-background: #f7f9fc; --sf-surface: #ffffff; --sf-surface-variant: #f1f4f8; --sf-on-surface: #18202a;
+  --sf-outline: #707984; --sf-error: #ba1a1a; --sf-success: #176b3a;
+  --sf-radius-sm: 8px; --sf-radius-md: 12px; --sf-radius-lg: 16px; --sf-radius-xl: 24px;
+  --sf-space-1: 4px; --sf-space-2: 8px; --sf-space-3: 12px; --sf-space-4: 16px; --sf-space-6: 24px; --sf-space-8: 32px;
+  --sf-motion-fast: 120ms; --sf-motion-short: 180ms; --sf-motion-medium: 240ms;
+  --sf-font-sans: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+  --sf-font-mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+}
+[data-theme="dark"] {
+  --sf-primary: #62b5f5; --sf-on-primary: #003154; --sf-secondary: #5fd6ce; --sf-tertiary: #ffb86a;
+  --sf-background: #0c1117; --sf-surface: #151c24; --sf-surface-variant: #1d2630; --sf-on-surface: #e3e8ef;
+  --sf-outline: #89929d; --sf-error: #ffb4ab; --sf-success: #77da95;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --sf-primary: #62b5f5; --sf-on-primary: #003154; --sf-secondary: #5fd6ce; --sf-tertiary: #ffb86a;
+  --sf-background: #0c1117; --sf-surface: #151c24; --sf-surface-variant: #1d2630; --sf-on-surface: #e3e8ef;
+  --sf-outline: #89929d; --sf-error: #ffb4ab; --sf-success: #77da95;
+}}
+* { box-sizing: border-box; }
+:focus-visible { outline: 2px solid var(--sf-primary); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }
+'''
+(THEME / 'web.css').write_text(webcss, encoding='utf-8')
+
+theme_tsx = '''import { createTheme, responsiveFontSizes, type ThemeOptions } from '@mui/material/styles';
+
+export type ForgeThemeMode = 'light' | 'dark';
+
+const shared: ThemeOptions = {
+  typography: {
+    fontFamily: 'Inter, "Segoe UI", Roboto, Arial, sans-serif',
+    h1: { fontWeight: 700, letterSpacing: '-0.03em' },
+    h2: { fontWeight: 700, letterSpacing: '-0.02em' },
+    h3: { fontWeight: 650 },
+    button: { fontWeight: 650, textTransform: 'none' },
+  },
+  shape: { borderRadius: 12 },
+  components: {
+    MuiButton: { styleOverrides: { root: { minHeight: 44, borderRadius: 999 } } },
+    MuiCard: { styleOverrides: { root: { borderRadius: 16, backgroundImage: 'none' } } },
+    MuiFocusVisible: { defaultProps: { className: 'Mui-focusVisible' } },
+  },
+};
+
+export function createForgeTheme(mode: ForgeThemeMode) {
+  const dark = mode === 'dark';
+  return responsiveFontSizes(createTheme({
+    ...shared,
+    palette: {
+      mode,
+      primary: { main: dark ? '#62B5F5' : '#005B96' },
+      secondary: { main: dark ? '#5FD6CE' : '#006C67' },
+      warning: { main: dark ? '#FFB86A' : '#8B4A00' },
+      error: { main: dark ? '#FFB4AB' : '#BA1A1A' },
+      success: { main: dark ? '#77DA95' : '#176B3A' },
+      background: { default: dark ? '#0C1117' : '#F7F9FC', paper: dark ? '#151C24' : '#FFFFFF' },
+      text: { primary: dark ? '#E3E8EF' : '#18202A', secondary: dark ? '#B8C0CA' : '#4D5661' },
+      divider: dark ? '#303944' : '#D8DEE6',
+    },
+  }));
+}
+
+export const lightTheme = createForgeTheme('light');
+export const darkTheme = createForgeTheme('dark');
+export default lightTheme;
+'''
+(THEME / 'theme.tsx').write_text(theme_tsx, encoding='utf-8')
+
+# Visual assets
+brand_guidelines = '''# Brand guidelines — System Forge Enterprise
+
+## Símbolo
+
+Hexágono estrutural, trilha ascendente e núcleo de IA. Área de proteção mínima igual à largura do núcleo central. Tamanho mínimo: 16 px para símbolo e 120 px para assinatura horizontal.
+
+## Usos permitidos
+
