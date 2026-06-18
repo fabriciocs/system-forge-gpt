@@ -1,0 +1,101 @@
+Conectar timeline configurável, contexto multimodal, prompts versionados, documentos aprováveis, custos de IA, RBAC/ABAC, LGPD e especialista por skill/etapa em um único control plane. Diferenciar por rastreabilidade e interoperabilidade, não apenas geração de código.
+
+## Pricing e monetização
+
+Mercado combina assinatura por usuário, créditos/tokens, consumo e serviços. Hipótese recomendada: assinatura por tenant + limites por funcionalidade/consumo + implantação enterprise + comissão transparente no marketplace.
+
+## Fontes consultadas em 2026-06-18
+
+Sites e documentações oficiais de Lovable, Bolt, v0, Replit, Atlassian, Notion, LangSmith, Langfuse, PromptLayer, Upwork, Toptal, Stripe e OpenAI. Ausência de TAM/SAM/SOM confiável foi registrada; nenhum número foi inventado.
+''')
+
+modules=[
+('IAM e escopo','autenticação, MFA, usuários, perfis, permissões e alternador global/tenant/empresa/filial'),
+('Tenancy','tenants, empresas, filiais, configurações e isolamento'),
+('Projetos','criação por ideia/arquivos, contexto, status e histórico'),
+('Workflow','templates, timelines, etapas, dependências, execução, reexecução e aprovação'),
+('IA','providers, modelos, agentes, prompts versionados, ferramentas, schemas, logs, custos e segurança'),
+('Documentos','geração, versões, comparação, comentários, aprovação e exportação'),
+('Especialistas','perfil, skills, matching, contratos, horas, custódia, repasse e avaliação'),
+('Billing','planos, features, limites, assinatura, uso, pagamentos, invoices e Stripe'),
+('Segurança/LGPD','políticas, MFA, segredos, incidentes, documentos legais, aceites e solicitações'),
+('Auditoria/integrações','eventos, correlação, webhooks, credenciais, retries e monitoramento')]
+rows='\n'.join(f'| F{i:02d} | {m} | {d} | alta | CRUD, filtros, escopo, estados, auditoria e critérios observáveis |' for i,(m,d) in enumerate(modules,1))
+write('03.md','03 — Especificação funcional consolidada',f'''## Visão e escopo
+
+SaaS B2B multi-tenant que transforma ideias em projetos documentados por timelines de IA governada e revisão humana. Inclui control plane global, administração do tenant e execução do projeto. Exclui arquitetura física definitiva, SQL, migrations e geração produtiva de código.
+
+## Catálogo funcional
+
+| ID | Domínio | Responsabilidade | Prioridade | Critério transversal |
+|---|---|---|---|---|
+{rows}
+
+Cada capacidade exige objetivo, atores, origem, regras atômicas, precondições, estados, exceções, dependências, prioridade e critérios de aceite. CRUD universal inclui listagem, detalhe, criação, edição, soft delete, histórico, filtros, autorização e auditoria.
+
+## Perfis e permissões
+
+Super Admin Master, Operacional, IA, Financeiro e Auditor; owner/admin/manager/analyst/collaborator/approver/finance/viewer do tenant; especialista. RBAC define ação e ABAC resolve escopo, plano, feature flag, estado, contexto e segregação de funções.
+
+## Regras principais
+
+Todo registro funcional possui escopo e metadados; prompts/documentos são imutáveis por versão; reexecução cria nova versão e impacto; etapa só libera dependentes após gate; ações críticas exigem MFA/justificativa; exclusão é lógica; custo e tokens são atribuídos ao tenant/projeto; segredo é write-only; webhooks são idempotentes.
+
+## Estados e feedbacks
+
+Pendente, bloqueado, disponível, aguardando entrada/execução/especialista/pagamento, processando, concluído, aprovado, rejeitado, revisão, erro, cancelado e arquivado. Mensagens informam causa, correlação e próxima ação sem vazar dados.
+
+## Integrações e IA
+
+Stripe; armazenamento/antimalware; e-mail; provedores de IA; web search; MCP/APIs; vector DB; webhooks. Tool calls são allowlisted, validados e auditados. Saída deve aderir a schema antes de virar documento.
+
+## Relatórios
+
+MRR/ARR/churn, assinaturas, inadimplência, consumo/tokens/custo/latência/erro, progresso de projetos, qualidade/aprovação, especialistas/horas/repasses, segurança/LGPD/auditoria.
+
+## Riscos e decisões
+
+Thin slice: ideia → timeline → execução → documento → aprovação. Marketplace e geração de código são modulares. Pendências fiscais, KYC, data residency e integrações setoriais exigem validação.
+''')
+
+entities=['TENANT','COMPANY','BRANCH','USER','PROFILE','PERMISSION','TENANT_USER','TENANT_USER_PROFILE','PLAN','FEATURE','PLAN_FEATURE','SUBSCRIPTION','SUBSCRIPTION_USAGE','PAYMENT','INVOICE','FEATURE_FLAG','AI_PROVIDER','AI_MODEL','AI_AGENT','AI_PROMPT_VERSION','AI_EXECUTION','AI_EXECUTION_PROMPT','PROJECT','PROJECT_FILE','TIMELINE_TEMPLATE','STEP_TEMPLATE','TIMELINE_TEMPLATE_STEP','STEP_DEPENDENCY','PROJECT_TIMELINE','PROJECT_STEP','STEP_EXECUTION','GENERATED_DOCUMENT','DOCUMENT_VERSION','APPROVAL','COMMENT','SKILL','SPECIALIST','SPECIALIST_SKILL','SPECIALIST_CONTRACT','SPECIALIST_CONTRACT_HOUR','SPECIALIST_PAYMENT','SPECIALIST_PAYOUT','INTEGRATION','WEBHOOK_ENDPOINT','LGPD_DOCUMENT','LGPD_DOCUMENT_VERSION','LGPD_ACCEPTANCE','LGPD_REQUEST','AUDIT_CONFIGURATION','AUDIT_EVENT','AUDIT_LOG']
+er='\n'.join(f'  {e} {{\n    uuid id PK\n    uuid tenant_id FK\n    string status\n    datetime created_at\n    datetime updated_at\n    datetime deleted_at\n  }}' for e in entities)
+rels='''
+  TENANT ||--o{ COMPANY : owns
+  COMPANY ||--o{ BRANCH : contains
+  TENANT ||--o{ TENANT_USER : has
+  USER ||--o{ TENANT_USER : joins
+  TENANT_USER ||--o{ TENANT_USER_PROFILE : receives
+  PROFILE ||--o{ TENANT_USER_PROFILE : grants
+  PLAN ||--o{ PLAN_FEATURE : enables
+  FEATURE ||--o{ PLAN_FEATURE : constrained_by
+  TENANT ||--o| SUBSCRIPTION : subscribes
+  SUBSCRIPTION ||--o{ SUBSCRIPTION_USAGE : measures
+  TENANT ||--o{ PROJECT : owns
+  PROJECT ||--o{ PROJECT_FILE : contextualizes
+  PROJECT ||--|| PROJECT_TIMELINE : follows
+  PROJECT_TIMELINE ||--o{ PROJECT_STEP : contains
+  PROJECT_STEP ||--o{ STEP_EXECUTION : executes
+  STEP_EXECUTION ||--o{ AI_EXECUTION : invokes
+  AI_AGENT ||--o{ AI_EXECUTION : performs
+  AI_PROMPT_VERSION ||--o{ AI_EXECUTION_PROMPT : snapshots
+  AI_EXECUTION ||--o{ AI_EXECUTION_PROMPT : records
+  PROJECT_STEP ||--o{ GENERATED_DOCUMENT : produces
+  GENERATED_DOCUMENT ||--o{ DOCUMENT_VERSION : versions
+  DOCUMENT_VERSION ||--o{ APPROVAL : receives
+  SPECIALIST ||--o{ SPECIALIST_SKILL : declares
+  SKILL ||--o{ SPECIALIST_SKILL : classifies
+  PROJECT_STEP ||--o{ SPECIALIST_CONTRACT : requests
+  SPECIALIST ||--o{ SPECIALIST_CONTRACT : accepts
+  SPECIALIST_CONTRACT ||--o{ SPECIALIST_CONTRACT_HOUR : logs
+  LGPD_DOCUMENT ||--o{ LGPD_DOCUMENT_VERSION : versions
+  LGPD_DOCUMENT_VERSION ||--o{ LGPD_ACCEPTANCE : accepted_as
+  AUDIT_CONFIGURATION ||--o{ AUDIT_EVENT : configures
+  AUDIT_EVENT ||--o{ AUDIT_LOG : materializes
+'''
+write('04.md','04 — DER e modelagem lógica de dados',f'''## Visão geral
+
+Modelo lógico normalizado e tenant-aware, derivado da especificação funcional. Toda entidade possui PK; entidades funcionais incluem escopo e soft delete; relações N:N usam associativas; histórico e versões são imutáveis.
+
+## Domínios
+
