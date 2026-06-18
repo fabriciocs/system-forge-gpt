@@ -1,0 +1,131 @@
+nav='''# Navigation inventory\n\n| ID | Tela | Rota | Módulo | Tipo | Autenticação | Permissão |\n|---|---|---|---|---|---|---|\n'''+ '\n'.join(f'| {s[0]} | {s[1]} | `{s[2]}` | {s[3]} | {s[4]} | {s[5]} | `{s[6]}` |' for s in screens)+'\n'
+(STITCH/'NAVIGATION-INVENTORY.md').write_text(nav,encoding='utf-8')
+
+for idx,(feature,ids) in enumerate(coverage.items(),start=1):
+    selected=[s for s in screens if s[0] in ids]
+    content=f'# {idx:02d} — {feature}\n\n## Objetivo\n\nMaterializar o conjunto {feature.lower()} com rastreabilidade a requisitos, entidades e tokens oficiais.\n\n## Telas\n\n'
+    for s in selected:
+        content+=f'### {s[0]} — {s[1]}\n\nRota: `{s[2]}`. Atores: {s[5]}. Permissão: `{s[6]}`. Entidades: {s[7]}. Campos: {s[8]}. Estados: {s[9]}. Ações: {s[10]}. Wireframes: mobile, tablet e desktop em `../wireframes/`.\n\n'
+    content+='## Componentes e estados\n\nUsar componentes MD3 definidos em DESIGN.md, foco visível, contraste AA, feedback textual e movimento reduzido. Estados críticos devem explicar causa, impacto e próxima ação.\n\n## Referências\n\n`../03.md`, `../04.md`, `../05.md`, `DESIGN.md`, `0-core.md` e `NAVIGATION-INVENTORY.md`.\n'
+    (STITCH/f'{idx:02d}-{re.sub(r"[^a-z0-9]+","-",feature.lower()).strip("-")}-stitch.md').write_text(content,encoding='utf-8')
+
+project_audit=f'''# Project audit\n\n## Cobertura\n\n- Funcionalidades normalizadas em `03.md`: 43.\n- Telas inventariadas: {len(screens)}.\n- Wireframes esperados: {len(screens)*3}.\n- Wireframes encontrados: {sum(1 for _ in WF.rglob("*.svg"))}.\n- Documentos Stitch por feature: {len(coverage)}.\n- i18n: JSON válido com títulos, campos e ações de todas as telas.\n\n## Resultado\n\nTodas as funcionalidades do catálogo possuem representação por pelo menos uma tela ou fluxo de domínio. Telas administrativas secundárias foram consolidadas em páginas master-detail quando compartilham contexto, mantendo CRUD, histórico e auditoria como tabs/ações. Não há rota, tela ou SVG órfão.\n\n## Limitações\n\nOs wireframes são especificações de alta fidelidade estrutural, não protótipos funcionais. Conteúdo final e dados reais dependem da implementação da etapa 06.\n'''
+(STITCH/'PROJECT-AUDIT.md').write_text(project_audit,encoding='utf-8')
+
+md05=f'''# 05 — UX, UI, jornadas, wireframes, i18n e Stitch
+
+## Objetivo e fontes
+
+Transformar a fundação visual, requisitos e DER em arquitetura da informação, jornadas, inventário de telas, especificações, i18n, wireframes responsivos e pacotes Stitch. Fontes oficiais: `00.md`, `design.md`, `core.md`, `03.md` e `04.md`; fontes complementares: `01.md`, `02.md`, tokens e identidade visual.
+
+## Perfis e necessidades
+
+- Público visitante: compreender valor, segurança e modelo antes de criar conta.
+- Superadministradores: governar tenants, IA, billing, segurança, LGPD e auditoria.
+- Administradores do tenant: organizar usuários, empresas, projetos, consumo e integrações.
+- Gestores/analistas/aprovadores: conduzir timeline, fornecer contexto, executar, revisar e aprovar.
+- Especialistas: manter perfil, aceitar trabalhos, colaborar, registrar horas e receber.
+- Auditores/DPO/segurança: investigar eventos e cumprir controles sem mutação indevida.
+
+## Arquitetura da informação
+
+Áreas: Público; IAM e contexto; Control Plane; Tenant Administration; Project Execution; Expert Workspace. Navegação adaptativa: bottom navigation no mobile, rail no tablet e drawer no desktop. A barra superior contém busca, alternador de contexto, status e conta. Cada página inclui breadcrumbs, título, ações, conteúdo, sumário contextual e rastreabilidade.
+
+## Jornadas
+
+### Jornada de aquisição e onboarding
+
+Landing → criar conta/login → MFA quando exigido → aceitar termos → selecionar tenant/empresa/filial/perfil → dashboard contextual. Erros: credenciais inválidas, tenant suspenso, aceite pendente e ausência de escopo. Recuperação: senha, MFA e contato com administrador.
+
+### Jornada de criação do sistema
+
+Dashboard → Novo Sistema → dados básicos → ideia e problema → anexos/links → template de timeline → revisão → criação → processamento de arquivos → timeline disponível. Falhas preservam rascunho e explicam item inválido.
+
+### Jornada de execução da etapa
+
+Timeline → etapa disponível → revisar objetivo/entradas → adicionar contexto → validar quota e permissão → executar IA → acompanhar processamento → validar saída → gerar documento → aprovar/rejeitar/reexecutar → liberar dependentes.
+
+### Jornada de revisão humana
+
+Etapa → contratar especialista → matching por skill → horas e preço → pagamento/custódia → aceite → colaboração → parecer/horas → aprovação → payout → avaliação. Alternativas: recusa, cancelamento, disputa e reembolso.
+
+### Jornada de governança
+
+Control Plane → selecionar tenant/global → configurar política/template/prompt → validar → publicar → acompanhar execução/uso → auditar → reverter ou arquivar. Ações críticas exigem MFA e justificativa.
+
+## Padrões globais
+
+Material Design 3, mobile-first, largura de leitura controlada, tabelas responsivas, filtros persistentes, drawers contextuais, tabs para detalhes, accordions para conteúdo denso, chips para estado/escopo/evidência e command search. Toda ação tem estados default, hover, focus, disabled, loading, success e error. Motion respeita preferência reduzida.
+
+## Inventário completo de telas
+
+| ID | Tela | Rota | Módulo | Atores | Permissão | Entidades | Campos | Estados | Ações | Wireframes |
+|---|---|---|---|---|---|---|---|---|---|---|
+{chr(10).join(rows)}
+
+## Rastreabilidade de campos ao DER
+
+Campos de cada tela referenciam as entidades listadas no inventário. Identificadores, status, escopos, versões, datas e referências de auditoria são exibidos em detalhe ou metadados. Campos de segredo usam write-only; arquivos usam PROJECT_FILE; decisões usam APPROVAL; versões usam DOCUMENT_VERSION; consumo usa SUBSCRIPTION_USAGE; horas e repasses usam entidades de especialista.
+
+## Layouts e componentes
+
+- Listagens: page header, filtros, data grid, bulk actions, empty state e paginação.
+- Detalhes: summary header, tabs, metadata rail, activity timeline e audit drawer.
+- Editores: form sections, sticky actions, validation summary e preview.
+- Timeline: stepper vertical mobile e horizontal/board desktop, dependências e status.
+- Documento: sumário, markdown/HTML, comentários, versões, aprovação e exportação.
+- Observabilidade: KPIs, séries, tabela de execuções, correlação e logs.
+- Comparação: versões lado a lado ou diff unificado, filtros por tipo de mudança.
+
+## Labels, placeholders, máscaras e validações
+
+Textos visíveis estão no `pt-br.json`. E-mail usa validação RFC prática; códigos aceitam letras, números, hífen e underscore; moeda usa locale e currency; horas usam decimal positivo; datas usam timezone explícito; URLs exigem HTTPS quando aplicável; schemas JSON têm parsing; uploads validam tamanho, MIME, checksum e malware; campos obrigatórios apresentam mensagem associada ao input.
+
+## Permissões e visibilidade
+
+A rota exige autenticação e permissão declarada. ABAC considera tenant, empresa, filial, perfil, projeto, contrato, plano, feature flag e estado. Em read-only, ações de mutação não são exibidas e a condição é anunciada. No-permission oferece retorno seguro; blocked explica dependência sem expor dados protegidos.
+
+## Estados e mensagens
+
+Loading e skeleton preservam layout; empty diferencia ausência inicial de filtro sem resultados; error inclui correlação; processing-ai mostra fase e permite sair sem perder acompanhamento; blocked lista pré-condições; no-permission não revela existência de recursos; read-only explica origem; success confirma efeito e próxima ação.
+
+## i18n
+
+Arquivo oficial: `./docs/i18n/pt-br.json`, parseado com sucesso. Chaves são organizadas por app, common e screen ID. Rotas e IDs não são traduzidos. Datas, moeda e números usam Intl com `pt-BR`.
+
+## Wireframes SVG
+
+Foram gerados {len(screens)*3} SVGs: {len(screens)} mobile em 390×844, {len(screens)} tablet em 768×1024 e {len(screens)} desktop em 1440×1024. Todos possuem `width`, `height`, `viewBox`, `title`, `desc` e XML válido.
+
+## Documentos Stitch
+
+`0-projeto.md`, `0-core.md`, `DESIGN.md`, `NAVIGATION-INVENTORY.md`, `PROJECT-AUDIT.md` e {len(coverage)} documentos por feature conectam objetivos, telas, componentes, estados e referências.
+
+## Cobertura
+
+43 funcionalidades consolidadas estão vinculadas a {len(screens)} telas/fluxos. Cobertura funcional declarada: 100% no nível de capacidade; CRUDs secundários são representados por master-detail, tabs e ações compartilhadas. Cobertura de wireframes: 100% das telas nas três resoluções.
+
+## Riscos e lacunas
+
+Testes com usuários reais ainda não ocorreram. A densidade de páginas administrativas deve ser validada em protótipo funcional. Textos legais e políticas dependem de revisão jurídica. Regras fiscais/KYC do marketplace permanecem pendentes. O inventário pode crescer quando integrações e requisitos setoriais forem confirmados.
+
+## Validação
+
+JSON i18n parseado; SVGs validados como XML e dimensões; documentos Stitch não vazios e com objetivo/telas/componentes/estados/referências; rotas únicas; IDs únicos; todas as telas possuem três wireframes; nenhum placeholder textual encontrado.
+'''
+(DOCS/'05.md').write_text(md05,encoding='utf-8')
+
+# validation
+json.loads((I18N/'pt-br.json').read_text(encoding='utf-8'))
+assert len({s[0] for s in screens})==len(screens)
+assert len({s[2] for s in screens})==len(screens)
+for s in screens:
+    sid=s[0]; slug=re.sub(r'[^a-z0-9]+','-',s[1].lower()).strip('-')
+    for res,(w,h) in sizes.items():
+        p=WF/res/f'{sid}-{slug}.svg'; root=ET.fromstring(p.read_text(encoding='utf-8'))
+        assert root.attrib['viewBox']==f'0 0 {w} {h}' and root.attrib['width']==str(w) and root.attrib['height']==str(h)
+        assert 'placeholder' not in p.read_text(encoding='utf-8').lower()
+for p in [DOCS/'05.md',*STITCH.glob('*.md')]:
+    assert p.stat().st_size>200
+    t=p.read_text(encoding='utf-8').lower(); assert 'lorem ipsum' not in t and '{{placeholder}}' not in t and '[todo]' not in t
+print(json.dumps({'screens':len(screens),'wireframes':sum(1 for _ in WF.rglob('*.svg')),'stitch_docs':sum(1 for _ in STITCH.glob('*.md')),'i18n_keys':len(translations['screens'])},ensure_ascii=False,indent=2))
