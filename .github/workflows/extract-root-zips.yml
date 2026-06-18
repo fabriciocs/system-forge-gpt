@@ -188,17 +188,16 @@ jobs:
 
             if [[ ${install_exit_code} -ne 0 ]]; then
               exit_code=${install_exit_code}
-              echo "Build skipped because npm install failed." | tee -a "${log_file}"
-            else
-              echo | tee -a "${log_file}"
-              echo "===== npm run build =====" | tee -a "${log_file}"
-              npm run build 2>&1 | tee -a "${log_file}"
-              build_exit_code=${PIPESTATUS[0]}
-              echo "npm run build exit code: ${build_exit_code}" | tee -a "${log_file}"
+            fi
 
-              if [[ ${build_exit_code} -ne 0 ]]; then
-                exit_code=${build_exit_code}
-              fi
+            echo | tee -a "${log_file}"
+            echo "===== npm run build =====" | tee -a "${log_file}"
+            npm run build 2>&1 | tee -a "${log_file}"
+            build_exit_code=${PIPESTATUS[0]}
+            echo "npm run build exit code: ${build_exit_code}" | tee -a "${log_file}"
+
+            if [[ ${build_exit_code} -ne 0 && ${exit_code} -eq 0 ]]; then
+              exit_code=${build_exit_code}
             fi
           fi
 
@@ -249,7 +248,7 @@ jobs:
           git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Fail workflow when dashboard build fails
-        if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_build.outputs.exit_code != '0'
+        if: always() && steps.extract.outputs.processed_count != '0' && steps.dashboard_build.outputs.exit_code != '' && steps.dashboard_build.outputs.exit_code != '0'
         shell: bash
         env:
           BUILD_EXIT_CODE: ${{ steps.dashboard_build.outputs.exit_code }}
