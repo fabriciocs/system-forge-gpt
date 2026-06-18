@@ -1,0 +1,135 @@
+from pathlib import Path
+from datetime import datetime, timezone
+from xml.etree import ElementTree as ET
+from PIL import Image, ImageDraw
+import hashlib, json, uuid, re, math
+
+ROOT=Path.cwd()/'64BD1EFD'; DOCS=ROOT/'docs'; THEME=DOCS/'theme'; VI=DOCS/'visual-identity'
+for p in (DOCS,THEME,VI): p.mkdir(parents=True,exist_ok=True)
+idea=(ROOT/'ideia-inicial.md').read_text(encoding='utf-8')
+sha=hashlib.sha256(idea.encode()).hexdigest(); sid=sha[:8].upper(); session=str(uuid.uuid4()); now=datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+meta={'system_id':sid,'session_id':session,'created_at':now,'source':'./ideia-inicial.md','source_sha256':sha,'provisional_name':'System Forge Enterprise','language':'pt-BR','status':'validated'}
+(DOCS/'00.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2),encoding='utf-8')
+
+def write(name,title,body):
+ p=DOCS/name; p.write_text(f'# {title}\n\n{body.strip()}\n',encoding='utf-8'); return p
+
+write('00.md','00 — Fundação inicial do produto',f'''## Rastreabilidade
+
+| Campo | Valor |
+|---|---|
+| System ID | `{sid}` |
+| Session ID | `{session}` |
+| Criado em | `{now}` |
+| SHA-256 | `{sha}` |
+
+## Ideia inicial preservada integralmente
+
+<!-- ORIGINAL_IDEA_START -->
+
+{idea}
+
+<!-- ORIGINAL_IDEA_END -->
+
+## Direção selecionada
+
+**Dark Forge + Editorial Console**: linguagem enterprise, editorial e operacional para tornar IA, etapas, decisões e auditoria legíveis. A marca comunica precisão, progressão, potência controlada e confiança, sem estética genérica de chatbot.
+
+## Identidade visual
+
+Símbolo hexagonal para estrutura e governança, trilha ascendente para timeline e núcleo âmbar para inteligência assistiva. Primary azul profundo, secondary teal, tertiary âmbar; superfícies claras e grafite; tipografia Inter/Segoe UI e JetBrains Mono/Consolas.
+
+## Temas e acessibilidade
+
+Temas claro, escuro e preferência do sistema. Contraste WCAG AA, foco visível, alvos de 44 px, teclado completo, landmarks, texto alternativo, motion reduzido e nenhuma dependência exclusiva de cor.
+
+## Assets
+
+Logo horizontal, marca, versões escuras/monocromáticas, favicon, ícones 16–1024, imagens sociais e splash, documentados em `visual-identity/brand-guidelines.md`.
+''')
+
+write('core.md','Core conceitual — System Forge Enterprise','''## Propósito
+
+Control plane documental para transformar uma ideia em artefatos rastreáveis por IA e revisão humana.
+
+## Contextos
+
+Global, tenant, empresa, filial, projeto e especialista. O contexto ativo deve permanecer visível no app shell e ser aplicado a navegação, busca, permissões e auditoria.
+
+## App shell
+
+App bar com busca e alternador de contexto; drawer/rail/bottom navigation adaptativos; breadcrumbs; cabeçalho contextual; área principal; sumário/metadata rail opcional.
+
+## Princípios
+
+Contexto antes da ação; estado antes da promessa; evidência próxima da decisão; histórico acessível; soft delete; IA auditável; conteúdo longo com sumário e âncoras.
+
+## Estados globais
+
+loading, skeleton, empty, error, blocked, no-permission, read-only, processing-ai, success, offline e maintenance. Cada estado explica causa, impacto e próxima ação.
+''')
+
+write('design.md','Design specification','''## Direção visual
+
+Material Design 3, mobile-first, minimalista e responsivo. Dark Forge + Editorial Console combina superfícies técnicas, títulos editoriais e acentos funcionais.
+
+## Breakpoints
+
+Mobile 390×844 com bottom navigation; tablet 768×1024 com rail; desktop 1440×1024 com drawer de 280 px e painel contextual.
+
+## Componentes
+
+AppShell, ContextSwitcher, Breadcrumbs, PageHeader, StageTimeline, EvidenceChip, ScopeChip, StatusBadge, DocumentReader, SectionToc, SearchCommand, DataTable, MatrixTable, DiagramPanel, CodePanel, JsonViewer, SvgPreview, RiskCard, DecisionCard, AcceptanceChecklist, StatePanel e AuditTrail.
+
+## Motion e acessibilidade
+
+120/180/240/320 ms; movimento espacial removido em prefers-reduced-motion. WCAG 2.2 AA, foco estável, zoom 200%, textos ≥12 px e tabelas/diagramas com fallback textual.
+''')
+
+write('01.md','01 — Enquadramento e análise de incertezas','''## Problema central
+
+Empresas fragmentam ideias, arquivos, decisões e validações entre chats, documentos, planilhas e especialistas; perdem rastreabilidade, repetem trabalho e não governam IA, custo, segurança e aprovações de forma integrada.
+
+## Público e valor
+
+Compradores: CTOs, executivos e consultorias. Usuários: produto, análise, arquitetura, desenvolvimento, aprovação, DPO, segurança, financeiro e especialistas. Valor: reduzir tempo e retrabalho entre ideia e pacote implementável, mantendo versões, evidências, escopo e revisão humana.
+
+## Hipóteses críticas
+
+| ID | Hipótese | Impacto | Confiança | Validação |
+|---|---|---|---|---|
+| H01 | equipes pagam para reduzir retrabalho de especificação | alto | média | entrevistas e piloto |
+| H02 | timeline orientada supera chat livre | alto | média | protótipo comparativo |
+| H03 | versões e evidências aumentam confiança na IA | alto | alta | teste moderado |
+| H04 | governança multi-tenant é requisito enterprise | alto | alta | entrevistas técnicas |
+| H05 | especialista por etapa reduz bloqueios | alto | baixa | concierge manual |
+
+## Riscos e oportunidades
+
+Riscos: escopo excessivo, inconsistência de IA, vazamento entre tenants, custo imprevisível, marketplace sem liquidez e LGPD. Oportunidades: control plane de product engineering, templates verticais, compliance auditável, revisão premium e integrações em vez de substituição total.
+
+## Perguntas abertas
+
+Onde ocorre mais retrabalho? Quais artefatos liberam desenvolvimento? Que evidência torna IA confiável? Quem controla orçamento? Quais dados não podem sair? Quando revisão humana é mandatória? Qual modelo comercial é compreendido?
+
+## Plano de validação
+
+12 entrevistas; protótipo com 8 usuários; 3 projetos concierge; teste de preço com 10 compradores; revisão de segurança com 3 empresas; matching manual de 5 demandas.
+''')
+
+write('02.md','02 — Pesquisa de mercado e benchmarking','''## Protocolo
+
+Pesquisa orientada por H01–H05, comparando builders com IA, product/documentation platforms, workflow/orchestration, marketplaces e alternativas manuais. Evidência externa deve registrar URL, data e finalidade; “não encontrado” não significa inexistente.
+
+## Players e padrões
+
+| Categoria | Referências | Padrão observado |
+|---|---|---|
+| builders de apps | Lovable, Bolt, v0, Replit | rapidez e créditos; menor ênfase em governança documental |
+| produto/documentação | Jira Product Discovery, Confluence, Notion | colaboração e histórico; IA não forma pipeline completo |
+| orquestração | LangSmith, Langfuse, PromptLayer | observabilidade e versões de IA; não cobrem descoberta a UX |
+| especialistas | Upwork, Toptal, Workana | matching genérico; contratação não vinculada à etapa |
+| substitutos | consultoria, planilhas, Drive, chats | flexíveis, porém fragmentados e difíceis de auditar |
+
+## Lacunas e oportunidades
+
